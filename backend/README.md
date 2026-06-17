@@ -80,6 +80,16 @@ uv run uvicorn app:app --reload --port 8000
 | `POST` | `/runs/{id}/reject` | mark the result rejected (optional `note`) |
 | `POST` | `/runs/{id}/edit` | replace `recommended_gifts` with reviewer-edited ones |
 | `POST` | `/runs/{id}/regenerate` | re-run the pipeline, optionally steered by reviewer `feedback` |
+| `POST` | `/runs/stream` | run one contact with live **SSE** progress (UI path) |
+| `POST` | `/runs/{id}/regenerate/stream` | regenerate with live **SSE** progress |
+
+### Streaming (SSE)
+
+`POST /runs` is the batch path (Postman/curl → poll `GET /runs/{id}`). The UI uses the SSE path
+for live "thinking": `POST /runs/stream` emits `start` → `analyze` → one `node` event per graph
+node (carrying that node's log: model, tokens, ms) → a final `result` event with the `run_id` and
+full result. The streamed run is persisted identically, so all review endpoints apply afterwards.
+`regenerate/stream` does the same from stored inputs (no re-analyze).
 
 ### Example
 

@@ -1,10 +1,12 @@
 """FastAPI application exposing the recommendation workflow."""
 
 import asyncio
+import json
 import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException
+from fastapi.responses import StreamingResponse
 
 from analyze import SIGNALS_TO_AVOID, analyze_batch, to_signals
 from config import settings
@@ -55,19 +57,24 @@ def assemble(contact: Contact, state: GraphState) -> Recommendation:
     )
 
 
+def build_run_data(contact: Contact, signals: ProfileSignals, queries: list[str], state: GraphState) -> dict:
+    """Assemble the persisted run payload: result schema + trace + replayable inputs."""
+    data = assemble(contact, state).model_dump()
+    data["trace"] = state.get("logs", [])
+    # Persist the graph inputs so regeneration is self-contained and survives restarts.
+    data["inputs"] = {
+        "contact": contact.model_dump(),
+        "signals": signals.model_dump(),
+        "queries": queries,
+    }
+    return data
+
+
 async def run_contact(contact: Contact, signals: ProfileSignals, queries: list[str], user_id: str) -> dict:
     """Run one contact through the graph and persist; isolate failures."""
     try:
         state = await graph.ainvoke({"contact": contact, "signals": signals, "queries": queries})
-        data = assemble(contact, state).model_dump()
-        data["trace"] = state.get("logs", [])
-        # Persist the graph inputs so regeneration is self-contained and survives restarts.
-        data["inputs"] = {
-            "contact": contact.model_dump(),
-            "signals": signals.model_dump(),
-            "queries": queries,
-        }
-        run_id = create_run(user_id, contact.name, data)
+        run_id = create_run(user_id, contact.name, build_run_data(contact, signals, queries, state))
         return {"run_id": run_id, "contact_name": contact.name, "status": "pending_review"}
     except Exception as exc:
         logging.exception("contact %s failed", contact.name)
@@ -171,8 +178,87 @@ async def regenerate_run(run_id: str, req: RegenerateRequest) -> dict:
             "review_feedback": req.feedback or None,
         }
     )
-    data = assemble(contact, state).model_dump()
-    data["trace"] = state.get("logs", [])
-    data["inputs"] = inputs
-    update_run(run_id, status="pending_review", data=data)
+    update_run(run_id, status="pending_review", data=build_run_data(contact, signals, inputs["queries"], state))
     return get_run(run_id)
+
+
+def sse(event: str, data: dict) -> str:
+    """Format one Server-Sent Event frame."""
+    return f"event: {event}\ndata: {json.dumps(data)}\n\n"
+
+
+async def stream_run(
+    contact: Contact,
+    signals: ProfileSignals,
+    queries: list[str],
+    user_id: str,
+    *,
+    run_id: str | None = None,
+    feedback: str | None = None,
+):
+    """Stream a contact's graph run as SSE: one `node` event per node, then `result`.
+
+    Persists at the end (create on a fresh run, update when regenerating) so the
+    streamed run is reviewable exactly like a non-streamed one.
+    """
+    init: GraphState = {"contact": contact, "signals": signals, "queries": queries}
+    if feedback:
+        init["review_feedback"] = feedback
+    final_state: GraphState = {}
+    try:
+        async for mode, chunk in graph.astream(init, stream_mode=["updates", "values"]):
+            if mode == "updates":
+                for node, update in chunk.items():
+                    logs = (update or {}).get("logs") or []
+                    yield sse("node", {"node": node, "log": logs[-1] if logs else {}})
+            else:
+                final_state = chunk
+    except Exception as exc:
+        logging.exception("stream for %s failed", contact.name)
+        yield sse("error", {"contact_name": contact.name, "error": str(exc)})
+        return
+
+    data = build_run_data(contact, signals, queries, final_state)
+    if run_id:
+        update_run(run_id, status="pending_review", data=data)
+    else:
+        run_id = create_run(user_id, contact.name, data)
+    yield sse("result", {"run_id": run_id, "contact_name": contact.name, "status": "pending_review", **data})
+
+
+@app.post("/runs/stream")
+async def create_run_stream(req: RunRequest) -> StreamingResponse:
+    """Run one contact with live SSE progress (UI path). Streams a single contact."""
+    contact = req.contacts[0]
+
+    async def gen():
+        yield sse("start", {"contact_name": contact.name})
+        analyses, log = await asyncio.to_thread(analyze_batch, [contact])
+        yield sse("analyze", {"log": log})
+        analysis = next((a for a in analyses if a.name == contact.name), None)
+        signals = to_signals(analysis) if analysis else ProfileSignals(signals_to_avoid=SIGNALS_TO_AVOID)
+        queries = analysis.queries if analysis else []
+        async for ev in stream_run(contact, signals, queries, req.user_id):
+            yield ev
+
+    return StreamingResponse(gen(), media_type="text/event-stream")
+
+
+@app.post("/runs/{run_id}/regenerate/stream")
+async def regenerate_run_stream(run_id: str, req: RegenerateRequest) -> StreamingResponse:
+    """Re-run a contact from stored inputs with live SSE progress, steered by feedback."""
+    run = _load(run_id)
+    inputs = run["data"].get("inputs")
+    if not inputs:
+        raise HTTPException(status_code=409, detail="run has no stored inputs to regenerate from")
+    contact = Contact(**inputs["contact"])
+    signals = ProfileSignals(**inputs["signals"])
+
+    async def gen():
+        yield sse("start", {"contact_name": contact.name})
+        async for ev in stream_run(
+            contact, signals, inputs["queries"], run["user_id"], run_id=run_id, feedback=req.feedback or None
+        ):
+            yield ev
+
+    return StreamingResponse(gen(), media_type="text/event-stream")
