@@ -3,7 +3,6 @@ import type {
   BatchRun,
   BatchSummary,
   Recommendation,
-  RecommendedGift,
   RunItem,
   RunRequest,
   StreamEvent,
@@ -44,16 +43,6 @@ export const reviewItem = (
   action: "approve" | "reject",
   note = ""
 ) => postJSON<RunItem>(`/recommendations/${itemId}/${action}`, { note })
-
-export const editItem = (
-  itemId: string,
-  recommended_gifts: RecommendedGift[],
-  note = ""
-) =>
-  postJSON<RunItem>(`/recommendations/${itemId}/edit`, {
-    recommended_gifts,
-    note,
-  })
 
 export const regenerateItem = (itemId: string, feedback = "") =>
   postJSON<RunItem>(`/recommendations/${itemId}/regenerate`, { feedback })

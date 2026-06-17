@@ -12,8 +12,8 @@ LangChain LLM objects. SQLite is stdlib. Fewer deps, clearer traces.
 
 ## Review as REST rows, not LangGraph `interrupt()`
 
-The graph runs to completion and saves a plain DB row. Review (approve/reject/edit/regenerate)
-is separate REST endpoints that mutate rows.
+The graph runs to completion and saves a plain DB row. Review (approve/reject/regenerate) is
+separate REST endpoints that mutate rows.
 
 `interrupt()` suspends the graph in a live checkpointer tied to the runtime. Problems with that
 here:
@@ -24,9 +24,23 @@ here:
   replay. Review is a data concern, kept apart.
 - **Scale.** N pending reviews is N rows, not N suspended graphs in memory.
 - **REST fit.** `interrupt()` forces threading `thread_id` and `Command` objects through HTTP.
-- **No loss.** Its one perk, resume-to-skip-recompute, is useless here: approve/reject/edit
+- **No loss.** Its one perk, resume-to-skip-recompute, is useless here: approve/reject
   recompute nothing, and regenerate re-runs the cheap graph on purpose. Each row stores the
   graph inputs, so regenerate needs nothing from the original request.
+
+## Recommend-only: no edit action
+
+The product recommends; it does not let reviewers hand-edit gifts. Approve, reject, and
+regenerate cover the review loop. An edit endpoint was dropped (along with its unused frontend
+client) rather than ship a half-wired action. Less surface, one clear path: if a pick is wrong,
+regenerate with feedback.
+
+## Regenerate is per-contact, not per-batch
+
+Regenerate re-runs one contact at a time, never a whole batch. Same reason as the sequential UI
+path: each run is LLM calls and tokens, and on a free tier that cost is the binding constraint.
+A reviewer rejects a specific contact's picks, so regenerating just that one is both the natural
+action and the cheap one. No batch-wide re-run that burns calls on contacts already approved.
 
 ## Search then validate; the model never names products
 

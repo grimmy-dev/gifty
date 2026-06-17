@@ -34,7 +34,6 @@ from utils.models import (
     BatchSummary,
     Contact,
     CreateRunsResponse,
-    EditRequest,
     HumanReview,
     ItemSummary,
     ProfileSignals,
@@ -260,17 +259,6 @@ def reject_item(item_id: str, req: ReviewRequest) -> dict:
     data = item["data"]
     _set_review(data, "rejected", req.note)
     update_item(item_id, status="rejected", data=data)
-    return get_item(item_id)
-
-
-@app.post("/recommendations/{item_id}/edit", response_model=RunItem)
-def edit_item(item_id: str, req: EditRequest) -> dict:
-    """Replace the recommended gifts with reviewer-edited ones."""
-    item = _load(item_id)
-    data = item["data"]
-    data["recommended_gifts"] = [g.model_dump() for g in req.recommended_gifts]
-    _set_review(data, "edited", req.note)
-    update_item(item_id, status="edited", data=data)
     return get_item(item_id)
 
 

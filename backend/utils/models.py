@@ -83,13 +83,6 @@ class RegenerateRequest(BaseModel):
     feedback: str = ""
 
 
-class EditRequest(BaseModel):
-    """Reviewer-edited gifts that replace the generated ones."""
-
-    recommended_gifts: list["RecommendedGift"]
-    note: str = ""
-
-
 # ---------- Output ----------
 
 
