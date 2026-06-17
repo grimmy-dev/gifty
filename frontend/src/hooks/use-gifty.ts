@@ -8,7 +8,7 @@ import {
 } from "@/lib/api"
 import { parseRunRequest } from "@/lib/sample"
 import { errMsg } from "@/lib/utils"
-import type { Recommendation, ReviewStatus, StreamEvent } from "@/lib/types"
+import type { Recommendation, ReviewStatus, RunItem, StreamEvent } from "@/lib/types"
 
 export type RunPhase = "streaming" | "ready" | "error"
 
@@ -20,6 +20,30 @@ export interface ContactRun {
   // Locally chosen review outcome (drives the collapsed card state).
   action?: ReviewStatus
   error?: string
+}
+
+/** Map a persisted item (history / detail view) into a card-ready run. */
+export function runFromItem(item: RunItem): ContactRun {
+  const data = item.data
+  if (data?.error || !data?.recommended_gifts) {
+    return {
+      name: item.contact_name,
+      itemId: item.id,
+      phase: "error",
+      error: data?.error ?? "No recommendation data.",
+    }
+  }
+  const action =
+    item.status === "approved" || item.status === "rejected" || item.status === "edited"
+      ? item.status
+      : undefined
+  return {
+    name: item.contact_name,
+    itemId: item.id,
+    phase: "ready",
+    recommendation: data,
+    action,
+  }
 }
 
 export interface StreamLine {

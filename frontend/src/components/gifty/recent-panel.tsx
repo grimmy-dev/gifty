@@ -7,7 +7,7 @@ import {
 } from "lucide-react"
 
 import { useRecent } from "@/hooks/use-recent"
-import type { ContactRun } from "@/hooks/use-gifty"
+import { runFromItem } from "@/hooks/use-gifty"
 import type { RunItem } from "@/lib/types"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
@@ -29,31 +29,6 @@ function formatDate(ts: string): string {
         hour: "2-digit",
         minute: "2-digit",
       })
-}
-
-function toRun(item: RunItem): ContactRun {
-  const data = item.data
-  if (data?.error || !data?.recommended_gifts) {
-    return {
-      name: item.contact_name,
-      itemId: item.id,
-      phase: "error",
-      error: data?.error ?? "No recommendation data.",
-    }
-  }
-  const action =
-    item.status === "approved" ||
-    item.status === "rejected" ||
-    item.status === "edited"
-      ? item.status
-      : undefined
-  return {
-    name: item.contact_name,
-    itemId: item.id,
-    phase: "ready",
-    recommendation: data,
-    action,
-  }
 }
 
 function BatchGroup({
@@ -92,7 +67,7 @@ function BatchGroup({
         <div className="flex flex-col gap-4 border-t p-4">
           {items ? (
             items.map((item) => (
-              <RecommendationCard key={item.id} run={toRun(item)} readOnly />
+              <RecommendationCard key={item.id} run={runFromItem(item)} readOnly />
             ))
           ) : (
             <div className="flex items-center gap-2 py-4 text-sm text-muted-foreground">

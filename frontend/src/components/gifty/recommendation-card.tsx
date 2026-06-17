@@ -1,5 +1,6 @@
 import * as React from "react"
 import {
+  ArrowRightIcon,
   CheckIcon,
   ChevronDownIcon,
   DownloadIcon,
@@ -10,6 +11,7 @@ import {
 } from "lucide-react"
 
 import type { ContactRun } from "@/hooks/use-gifty"
+import { navigate } from "@/hooks/use-route"
 import type { Recommendation, ReviewStatus } from "@/lib/types"
 import { cn } from "@/lib/utils"
 import { Badge } from "@/components/ui/badge"
@@ -184,6 +186,17 @@ export const RecommendationCard = React.memo(function RecommendationCard({
                   ))}
                 </div>
               </section>
+            )}
+            {run.itemId && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="-ml-2 w-fit text-muted-foreground"
+                onClick={() => navigate(`/recommendation/${run.itemId}`)}
+              >
+                View more
+                <ArrowRightIcon />
+              </Button>
             )}
           </CardContent>
 

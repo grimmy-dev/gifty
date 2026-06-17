@@ -2,16 +2,26 @@ import * as React from "react"
 import { AlertCircleIcon, Trash2Icon, XIcon } from "lucide-react"
 
 import { useGifty } from "@/hooks/use-gifty"
+import { useRoute } from "@/hooks/use-route"
 import { SAMPLE_JSON } from "@/lib/sample"
 import { Button } from "@/components/ui/button"
 import { Tabs, TabsContent } from "@/components/ui/tabs"
 import { AppHeader } from "@/components/gifty/app-header"
+import { DetailPage } from "@/components/gifty/detail-page"
 import { InputPanel } from "@/components/gifty/input-panel"
 import { RecentPanel } from "@/components/gifty/recent-panel"
 import { RecommendationCard } from "@/components/gifty/recommendation-card"
 import { StreamLog } from "@/components/gifty/stream-log"
 
 export function App() {
+  const path = useRoute()
+  const detail = path.match(/^\/recommendation\/([^/]+)$/)
+  if (detail) return <DetailPage key={detail[1]} itemId={detail[1]} />
+
+  return <MainView />
+}
+
+function MainView() {
   const [mode, setMode] = React.useState("post")
   const [input, setInput] = React.useState("")
   const gifty = useGifty()
