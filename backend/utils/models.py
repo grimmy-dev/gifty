@@ -49,6 +49,25 @@ class RunRequest(BaseModel):
     contacts: list[Contact]
 
 
+class ReviewRequest(BaseModel):
+    """Approve/reject payload; note is an optional reviewer comment."""
+
+    note: str = ""
+
+
+class RegenerateRequest(BaseModel):
+    """Re-run a contact's pipeline, optionally steered by reviewer feedback."""
+
+    feedback: str = ""
+
+
+class EditRequest(BaseModel):
+    """Reviewer-edited gifts that replace the generated ones."""
+
+    recommended_gifts: list["RecommendedGift"]
+    note: str = ""
+
+
 # ---------- Output ----------
 
 

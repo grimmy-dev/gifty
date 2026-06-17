@@ -10,8 +10,18 @@ from analyze import SIGNALS_TO_AVOID, analyze_batch, to_signals
 from config import settings
 from graph.build import graph
 from graph.state import GraphState
-from utils.db import create_run, get_run, init_db
-from utils.models import Contact, HumanReview, ProfileSignals, Recommendation, RunRequest, SearchTrace
+from utils.db import create_run, get_run, init_db, update_run
+from utils.models import (
+    Contact,
+    EditRequest,
+    HumanReview,
+    ProfileSignals,
+    Recommendation,
+    RegenerateRequest,
+    ReviewRequest,
+    RunRequest,
+    SearchTrace,
+)
 
 logging.basicConfig(level=logging.INFO)
 
@@ -51,6 +61,12 @@ async def run_contact(contact: Contact, signals: ProfileSignals, queries: list[s
         state = await graph.ainvoke({"contact": contact, "signals": signals, "queries": queries})
         data = assemble(contact, state).model_dump()
         data["trace"] = state.get("logs", [])
+        # Persist the graph inputs so regeneration is self-contained and survives restarts.
+        data["inputs"] = {
+            "contact": contact.model_dump(),
+            "signals": signals.model_dump(),
+            "queries": queries,
+        }
         run_id = create_run(user_id, contact.name, data)
         return {"run_id": run_id, "contact_name": contact.name, "status": "pending_review"}
     except Exception as exc:
@@ -91,3 +107,72 @@ def read_run(run_id: str) -> dict:
     if not run:
         raise HTTPException(status_code=404, detail="run not found")
     return run
+
+
+def _load(run_id: str) -> dict:
+    """Fetch a run or 404."""
+    run = get_run(run_id)
+    if not run:
+        raise HTTPException(status_code=404, detail="run not found")
+    return run
+
+
+def _set_review(data: dict, status: str, note: str) -> None:
+    """Mirror review status/note into the embedded result schema."""
+    review = data.setdefault("human_review", {})
+    review["status"] = status
+    if note:
+        review["note"] = note
+
+
+@app.post("/runs/{run_id}/approve")
+def approve_run(run_id: str, req: ReviewRequest) -> dict:
+    run = _load(run_id)
+    data = run["data"]
+    _set_review(data, "approved", req.note)
+    update_run(run_id, status="approved", data=data)
+    return get_run(run_id)
+
+
+@app.post("/runs/{run_id}/reject")
+def reject_run(run_id: str, req: ReviewRequest) -> dict:
+    run = _load(run_id)
+    data = run["data"]
+    _set_review(data, "rejected", req.note)
+    update_run(run_id, status="rejected", data=data)
+    return get_run(run_id)
+
+
+@app.post("/runs/{run_id}/edit")
+def edit_run(run_id: str, req: EditRequest) -> dict:
+    """Replace the recommended gifts with reviewer-edited ones."""
+    run = _load(run_id)
+    data = run["data"]
+    data["recommended_gifts"] = [g.model_dump() for g in req.recommended_gifts]
+    _set_review(data, "edited", req.note)
+    update_run(run_id, status="edited", data=data)
+    return get_run(run_id)
+
+
+@app.post("/runs/{run_id}/regenerate")
+async def regenerate_run(run_id: str, req: RegenerateRequest) -> dict:
+    """Re-run the pipeline for a contact, steered by optional reviewer feedback."""
+    run = _load(run_id)
+    inputs = run["data"].get("inputs")
+    if not inputs:
+        raise HTTPException(status_code=409, detail="run has no stored inputs to regenerate from")
+    contact = Contact(**inputs["contact"])
+    signals = ProfileSignals(**inputs["signals"])
+    state = await graph.ainvoke(
+        {
+            "contact": contact,
+            "signals": signals,
+            "queries": inputs["queries"],
+            "review_feedback": req.feedback or None,
+        }
+    )
+    data = assemble(contact, state).model_dump()
+    data["trace"] = state.get("logs", [])
+    data["inputs"] = inputs
+    update_run(run_id, status="pending_review", data=data)
+    return get_run(run_id)

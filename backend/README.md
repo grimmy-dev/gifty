@@ -76,6 +76,10 @@ uv run uvicorn app:app --reload --port 8000
 | `GET`  | `/health` | liveness |
 | `POST` | `/runs` | run the pipeline for one or more contacts |
 | `GET`  | `/runs/{id}` | fetch a contact's result (structured output + trace) |
+| `POST` | `/runs/{id}/approve` | mark the result approved (optional `note`) |
+| `POST` | `/runs/{id}/reject` | mark the result rejected (optional `note`) |
+| `POST` | `/runs/{id}/edit` | replace `recommended_gifts` with reviewer-edited ones |
+| `POST` | `/runs/{id}/regenerate` | re-run the pipeline, optionally steered by reviewer `feedback` |
 
 ### Example
 
@@ -96,3 +100,15 @@ model/token/latency logs.
 
 Multiple contacts run concurrently; one contact failing returns `status: "failed"` for that
 contact without affecting the others.
+
+### Human review
+
+The pipeline runs to completion and persists the result; review happens through separate
+endpoints (above) rather than a LangGraph `interrupt()`. This keeps the graph a pure function,
+decouples review from the run, and makes review durable across restarts — the run row stores the
+graph `inputs`, so `regenerate` re-runs without the original request.
+
+`approve` / `reject` / `edit` are terminal. `regenerate` is the only looping action and is
+**human-gated, not auto-looping** — each call is one deliberate reviewer action. Its *internal*
+search retry is bounded (a single query-broaden pass per run); the number of regenerations is left
+uncapped server-side by design and surfaced as a subtle warning in the UI.
