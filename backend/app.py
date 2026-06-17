@@ -1,4 +1,9 @@
-"""FastAPI application exposing the recommendation workflow."""
+"""FastAPI application exposing the recommendation workflow.
+
+A *run* is one submission (a batch) identified by `run_id`; every contact in it is
+an *item* with its own id and review state. Batch endpoints live under `/runs`,
+per-contact review under `/recommendations/{item_id}`.
+"""
 
 import asyncio
 import json
@@ -13,21 +18,31 @@ from analyze import SIGNALS_TO_AVOID, ContactAnalysis, analyze_batch, to_signals
 from config import settings
 from graph.build import graph
 from graph.state import GraphState
-from utils.db import create_run, get_run, init_db, update_run
+from utils.db import (
+    create_item,
+    get_batch,
+    get_item,
+    init_db,
+    list_batches,
+    new_run_id,
+    update_item,
+)
 from utils.errors import register_handlers
 from utils.models import (
     APIError,
+    BatchRun,
+    BatchSummary,
     Contact,
     CreateRunsResponse,
     EditRequest,
     HumanReview,
+    ItemSummary,
     ProfileSignals,
     Recommendation,
     RegenerateRequest,
     ReviewRequest,
-    RunRecord,
+    RunItem,
     RunRequest,
-    RunSummary,
     SearchTrace,
 )
 
@@ -76,7 +91,7 @@ def assemble(contact: Contact, state: GraphState) -> Recommendation:
 
 
 def build_run_data(contact: Contact, signals: ProfileSignals, queries: list[str], state: GraphState) -> dict:
-    """Assemble the persisted run payload: result schema + trace + replayable inputs."""
+    """Assemble the persisted item payload: result schema + trace + replayable inputs."""
     data = assemble(contact, state).model_dump()
     data["trace"] = state.get("logs", [])
     # Persist the graph inputs so regeneration is self-contained and survives restarts.
@@ -88,19 +103,19 @@ def build_run_data(contact: Contact, signals: ProfileSignals, queries: list[str]
     return data
 
 
-async def run_contact(contact: Contact, signals: ProfileSignals, queries: list[str], user_id: str) -> RunSummary:
-    """Run one contact through the graph and persist; isolate failures."""
+async def run_contact(run_id: str, contact: Contact, signals: ProfileSignals, queries: list[str]) -> ItemSummary:
+    """Run one contact through the graph and persist into the batch; isolate failures."""
     try:
         state = await graph.ainvoke({"contact": contact, "signals": signals, "queries": queries})
         data = build_run_data(contact, signals, queries, state)
-        run_id = await asyncio.to_thread(create_run, user_id, contact.name, data)
-        return RunSummary(run_id=run_id, contact_name=contact.name, status="pending_review")
+        item_id = await asyncio.to_thread(create_item, run_id, contact.name, data)
+        return ItemSummary(item_id=item_id, contact_name=contact.name, status="pending_review")
     except Exception as exc:
         logging.exception("contact %s failed", contact.name)
-        run_id = await asyncio.to_thread(
-            create_run, user_id, contact.name, {"contact_name": contact.name, "error": str(exc)}, status="failed"
+        item_id = await asyncio.to_thread(
+            create_item, run_id, contact.name, {"contact_name": contact.name, "error": str(exc)}, status="failed"
         )
-        return RunSummary(run_id=run_id, contact_name=contact.name, status="failed", error=str(exc))
+        return ItemSummary(item_id=item_id, contact_name=contact.name, status="failed", error=str(exc))
 
 
 @app.get("/health")
@@ -129,30 +144,41 @@ def signals_and_queries(analysis: ContactAnalysis | None) -> tuple[ProfileSignal
 
 @app.post("/runs", response_model=CreateRunsResponse)
 async def create_runs(req: RunRequest) -> CreateRunsResponse:
-    """Batched analyze, then run each contact's pipeline concurrently."""
+    """Batched analyze, then run each contact's pipeline concurrently in one batch run."""
+    run_id = new_run_id()
     analyses = await analyze_contacts(req.contacts)
     sem = asyncio.Semaphore(settings.max_concurrency)
 
-    async def guarded(contact: Contact, analysis: ContactAnalysis | None) -> RunSummary:
+    async def guarded(contact: Contact, analysis: ContactAnalysis | None) -> ItemSummary:
         async with sem:
             signals, queries = signals_and_queries(analysis)
-            return await run_contact(contact, signals, queries, req.user_id)
+            return await run_contact(run_id, contact, signals, queries)
 
-    runs = await asyncio.gather(*(guarded(c, a) for c, a in zip(req.contacts, analyses)))
-    return CreateRunsResponse(runs=list(runs))
+    items = await asyncio.gather(*(guarded(c, a) for c, a in zip(req.contacts, analyses)))
+    return CreateRunsResponse(run_id=run_id, items=list(items))
 
 
-@app.get("/runs/{run_id}", response_model=RunRecord)
+@app.get("/runs", response_model=list[BatchSummary])
+def list_runs(limit: int = 20) -> list[dict]:
+    """Recent batch runs (newest first) for the history view."""
+    return list_batches(min(max(limit, 1), 100))
+
+
+@app.get("/runs/{run_id}", response_model=BatchRun)
 def read_run(run_id: str) -> dict:
-    return _load(run_id)
-
-
-def _load(run_id: str) -> dict:
-    """Fetch a run or 404."""
-    run = get_run(run_id)
-    if not run:
+    """All contact items belonging to one batch run."""
+    items = get_batch(run_id)
+    if not items:
         raise HTTPException(status_code=404, detail="run not found")
-    return run
+    return {"run_id": run_id, "created_at": items[0]["created_at"], "items": items}
+
+
+def _load(item_id: str) -> dict:
+    """Fetch a contact item or 404."""
+    item = get_item(item_id)
+    if not item:
+        raise HTTPException(status_code=404, detail="recommendation not found")
+    return item
 
 
 def _set_review(data: dict, status: str, note: str) -> None:
@@ -163,48 +189,53 @@ def _set_review(data: dict, status: str, note: str) -> None:
         review["note"] = note
 
 
-async def load_regen_inputs(run_id: str) -> tuple[Contact, ProfileSignals, dict, str]:
-    """Load a run's stored graph inputs for regeneration; 409 if none were saved."""
-    run = await asyncio.to_thread(_load, run_id)
-    inputs = run["data"].get("inputs")
+async def load_regen_inputs(item_id: str) -> tuple[Contact, ProfileSignals, dict, str]:
+    """Load an item's stored graph inputs for regeneration; 409 if none were saved."""
+    item = await asyncio.to_thread(_load, item_id)
+    inputs = item["data"].get("inputs")
     if not inputs:
-        raise HTTPException(status_code=409, detail="run has no stored inputs to regenerate from")
-    return Contact(**inputs["contact"]), ProfileSignals(**inputs["signals"]), inputs, run["user_id"]
+        raise HTTPException(status_code=409, detail="recommendation has no stored inputs to regenerate from")
+    return Contact(**inputs["contact"]), ProfileSignals(**inputs["signals"]), inputs, item["run_id"]
 
 
-@app.post("/runs/{run_id}/approve", response_model=RunRecord)
-def approve_run(run_id: str, req: ReviewRequest) -> dict:
-    run = _load(run_id)
-    data = run["data"]
+@app.get("/recommendations/{item_id}", response_model=RunItem)
+def read_item(item_id: str) -> dict:
+    return _load(item_id)
+
+
+@app.post("/recommendations/{item_id}/approve", response_model=RunItem)
+def approve_item(item_id: str, req: ReviewRequest) -> dict:
+    item = _load(item_id)
+    data = item["data"]
     _set_review(data, "approved", req.note)
-    update_run(run_id, status="approved", data=data)
-    return get_run(run_id)
+    update_item(item_id, status="approved", data=data)
+    return get_item(item_id)
 
 
-@app.post("/runs/{run_id}/reject", response_model=RunRecord)
-def reject_run(run_id: str, req: ReviewRequest) -> dict:
-    run = _load(run_id)
-    data = run["data"]
+@app.post("/recommendations/{item_id}/reject", response_model=RunItem)
+def reject_item(item_id: str, req: ReviewRequest) -> dict:
+    item = _load(item_id)
+    data = item["data"]
     _set_review(data, "rejected", req.note)
-    update_run(run_id, status="rejected", data=data)
-    return get_run(run_id)
+    update_item(item_id, status="rejected", data=data)
+    return get_item(item_id)
 
 
-@app.post("/runs/{run_id}/edit", response_model=RunRecord)
-def edit_run(run_id: str, req: EditRequest) -> dict:
+@app.post("/recommendations/{item_id}/edit", response_model=RunItem)
+def edit_item(item_id: str, req: EditRequest) -> dict:
     """Replace the recommended gifts with reviewer-edited ones."""
-    run = _load(run_id)
-    data = run["data"]
+    item = _load(item_id)
+    data = item["data"]
     data["recommended_gifts"] = [g.model_dump() for g in req.recommended_gifts]
     _set_review(data, "edited", req.note)
-    update_run(run_id, status="edited", data=data)
-    return get_run(run_id)
+    update_item(item_id, status="edited", data=data)
+    return get_item(item_id)
 
 
-@app.post("/runs/{run_id}/regenerate", response_model=RunRecord)
-async def regenerate_run(run_id: str, req: RegenerateRequest) -> dict:
+@app.post("/recommendations/{item_id}/regenerate", response_model=RunItem)
+async def regenerate_item(item_id: str, req: RegenerateRequest) -> dict:
     """Re-run the pipeline for a contact, steered by optional reviewer feedback."""
-    contact, signals, inputs, _ = await load_regen_inputs(run_id)
+    contact, signals, inputs, _ = await load_regen_inputs(item_id)
     state = await graph.ainvoke(
         {
             "contact": contact,
@@ -214,8 +245,8 @@ async def regenerate_run(run_id: str, req: RegenerateRequest) -> dict:
         }
     )
     data = build_run_data(contact, signals, inputs["queries"], state)
-    await asyncio.to_thread(update_run, run_id, status="pending_review", data=data)
-    return await asyncio.to_thread(get_run, run_id)
+    await asyncio.to_thread(update_item, item_id, status="pending_review", data=data)
+    return await asyncio.to_thread(get_item, item_id)
 
 
 def sse(event: str, data: dict) -> str:
@@ -224,18 +255,18 @@ def sse(event: str, data: dict) -> str:
 
 
 async def stream_run(
+    run_id: str,
     contact: Contact,
     signals: ProfileSignals,
     queries: list[str],
-    user_id: str,
     *,
-    run_id: str | None = None,
+    item_id: str | None = None,
     feedback: str | None = None,
 ):
     """Stream a contact's graph run as SSE: one `node` event per node, then `result`.
 
-    Persists at the end (create on a fresh run, update when regenerating) so the
-    streamed run is reviewable exactly like a non-streamed one.
+    Persists at the end (create within the batch on a fresh run, update when
+    regenerating) so the streamed run is reviewable exactly like a non-streamed one.
     """
     init: GraphState = {"contact": contact, "signals": signals, "queries": queries}
     if feedback:
@@ -255,44 +286,48 @@ async def stream_run(
         return
 
     data = build_run_data(contact, signals, queries, final_state)
-    if run_id:
-        await asyncio.to_thread(update_run, run_id, status="pending_review", data=data)
+    if item_id:
+        await asyncio.to_thread(update_item, item_id, status="pending_review", data=data)
     else:
-        run_id = await asyncio.to_thread(create_run, user_id, contact.name, data)
-    yield sse("result", {"run_id": run_id, "contact_name": contact.name, "status": "pending_review", **data})
+        item_id = await asyncio.to_thread(create_item, run_id, contact.name, data)
+    yield sse(
+        "result",
+        {"run_id": run_id, "item_id": item_id, "contact_name": contact.name, "status": "pending_review", **data},
+    )
 
 
 @app.post("/runs/stream")
 async def create_runs_stream(req: RunRequest) -> StreamingResponse:
-    """Run all contacts over one SSE connection (UI path).
+    """Run all contacts of one batch over a single SSE connection (UI path).
 
     Analyze once, then walk contacts sequentially so the stream stays light: a
-    single connection, one graph at a time. Every event is tagged with the
-    contact it belongs to, and each contact ends with its own `result`.
+    single connection, one graph at a time. Every event is tagged with the batch
+    `run_id` and its contact, and each contact ends with its own `result`.
     """
     contacts = req.contacts
+    run_id = new_run_id()
 
     async def gen():
-        yield sse("start", {"contacts": [c.name for c in contacts]})
+        yield sse("start", {"run_id": run_id, "contacts": [c.name for c in contacts]})
         analyses = await analyze_contacts(contacts)
-        yield sse("analyze", {"contacts": [c.name for c in contacts]})
+        yield sse("analyze", {"run_id": run_id, "contacts": [c.name for c in contacts]})
         for contact, analysis in zip(contacts, analyses):
             signals, queries = signals_and_queries(analysis)
-            async for ev in stream_run(contact, signals, queries, req.user_id):
+            async for ev in stream_run(run_id, contact, signals, queries):
                 yield ev
 
     return StreamingResponse(gen(), media_type="text/event-stream")
 
 
-@app.post("/runs/{run_id}/regenerate/stream")
-async def regenerate_run_stream(run_id: str, req: RegenerateRequest) -> StreamingResponse:
+@app.post("/recommendations/{item_id}/regenerate/stream")
+async def regenerate_item_stream(item_id: str, req: RegenerateRequest) -> StreamingResponse:
     """Re-run a contact from stored inputs with live SSE progress, steered by feedback."""
-    contact, signals, inputs, user_id = await load_regen_inputs(run_id)
+    contact, signals, inputs, run_id = await load_regen_inputs(item_id)
 
     async def gen():
-        yield sse("start", {"contact_name": contact.name})
+        yield sse("start", {"run_id": run_id, "item_id": item_id, "contact_name": contact.name})
         async for ev in stream_run(
-            contact, signals, inputs["queries"], user_id, run_id=run_id, feedback=req.feedback or None
+            run_id, contact, signals, inputs["queries"], item_id=item_id, feedback=req.feedback or None
         ):
             yield ev
 

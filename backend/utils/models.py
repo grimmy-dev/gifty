@@ -60,8 +60,15 @@ class Contact(BaseModel):
 
 
 class RunRequest(BaseModel):
-    user_id: str = "anonymous"
     contacts: list[Contact] = Field(min_length=1, max_length=MAX_CONTACTS)
+
+    @model_validator(mode="before")
+    @classmethod
+    def accept_bare_array(cls, data: object) -> object:
+        """Allow posting a raw `[ {contact}, ... ]` as well as `{contacts: [...]}`."""
+        if isinstance(data, list):
+            return {"contacts": data}
+        return data
 
 
 class ReviewRequest(BaseModel):
@@ -161,28 +168,52 @@ class Product(BaseModel):
 # ---------- API responses ----------
 
 
-class RunSummary(BaseModel):
-    """One run's outcome as returned by the batched create endpoint."""
+class ItemSummary(BaseModel):
+    """One contact's outcome within a batch, as returned by the create endpoint."""
 
-    run_id: str
+    item_id: str
     contact_name: str
     status: ReviewStatus
     error: str | None = None
 
 
 class CreateRunsResponse(BaseModel):
-    runs: list[RunSummary]
+    run_id: str
+    items: list[ItemSummary]
 
 
-class RunRecord(BaseModel):
-    """A persisted run row. `data` holds the result schema plus trace/inputs (or an error)."""
+class RunItem(BaseModel):
+    """A persisted contact recommendation. `data` holds the result schema plus
+    trace/inputs (or an error). `run_id` is the batch it belongs to."""
 
     id: str
-    user_id: str
+    run_id: str
     contact_name: str
     status: ReviewStatus
     created_at: str
     data: dict[str, Any]
+
+
+class BatchRun(BaseModel):
+    """A full batch run: every contact item submitted together."""
+
+    run_id: str
+    created_at: str
+    items: list[RunItem]
+
+
+class ContactStatus(BaseModel):
+    item_id: str
+    contact_name: str
+    status: ReviewStatus
+
+
+class BatchSummary(BaseModel):
+    """Lightweight recent-batch listing for the history view."""
+
+    run_id: str
+    created_at: str
+    contacts: list[ContactStatus]
 
 
 class ErrorBody(BaseModel):

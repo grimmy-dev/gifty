@@ -7,6 +7,9 @@ and a human-review step. Built with FastAPI + LangGraph.
 Gifts are never invented: a web search engine (Tavily) finds real product URLs, the pipeline
 validates them, and the model only *reasons over* validated candidates.
 
+One submission is a batch run (`run_id`); each contact in it is an item (`item_id`) with its own
+result and review state.
+
 ## Architecture
 
 Two stages, orchestrated by the API:
@@ -75,14 +78,18 @@ uv run uvicorn app:app --reload --port 8000
 | Method | Path | Purpose |
 |--------|------|---------|
 | `GET`  | `/health` | liveness |
-| `POST` | `/runs` | run the pipeline for one or more contacts |
-| `GET`  | `/runs/{id}` | fetch a contact's result (structured output + trace) |
-| `POST` | `/runs/{id}/approve` | mark the result approved (optional `note`) |
-| `POST` | `/runs/{id}/reject` | mark the result rejected (optional `note`) |
-| `POST` | `/runs/{id}/edit` | replace `recommended_gifts` with reviewer-edited ones |
-| `POST` | `/runs/{id}/regenerate` | re-run the pipeline, optionally steered by reviewer `feedback` |
-| `POST` | `/runs/stream` | run all contacts over one **SSE** connection (UI path) |
-| `POST` | `/runs/{id}/regenerate/stream` | regenerate with live **SSE** progress |
+| `POST` | `/runs` | run the pipeline for a batch of contacts |
+| `GET`  | `/runs` | recent batch runs (`?limit=`, newest first) |
+| `GET`  | `/runs/{run_id}` | fetch a batch: all contact items |
+| `GET`  | `/recommendations/{item_id}` | fetch one contact's result (structured output + trace) |
+| `POST` | `/recommendations/{item_id}/approve` | mark approved (optional `note`) |
+| `POST` | `/recommendations/{item_id}/reject` | mark rejected (optional `note`) |
+| `POST` | `/recommendations/{item_id}/edit` | replace `recommended_gifts` with reviewer-edited ones |
+| `POST` | `/recommendations/{item_id}/regenerate` | re-run the pipeline, optionally steered by `feedback` |
+| `POST` | `/runs/stream` | run a batch over one **SSE** connection (UI path) |
+| `POST` | `/recommendations/{item_id}/regenerate/stream` | regenerate one contact with live **SSE** progress |
+
+The request body is a bare contacts array or `{ "contacts": [...] }`.
 
 ### Errors
 
@@ -98,13 +105,14 @@ never returned.
 
 ### Streaming (SSE)
 
-`POST /runs` is the batch path (Postman/curl → poll `GET /runs/{id}`). The UI uses the SSE path
+`POST /runs` is the batch path (Postman/curl → fetch `GET /runs/{run_id}`). The UI uses the SSE path
 for live "thinking": `POST /runs/stream` analyzes once, then walks the contacts **sequentially over
-a single connection** (one graph at a time — kept deliberately light). It emits `start` →
-`analyze` → per contact a stream of `node` events (each tagged `contact_name`, carrying that node's
-log: model, tokens, ms) and a `result` event with the contact's `run_id` and full result. Streamed
-runs are persisted identically, so all review endpoints apply afterwards. `regenerate/stream` does
-the same for one contact from stored inputs (no re-analyze).
+a single connection** (one graph at a time — kept deliberately light). It emits `start` (with the
+batch `run_id`) → `analyze` → per contact a stream of `node` events (each tagged `contact_name`,
+carrying that node's log: model, tokens, ms) and a `result` event with the batch `run_id`, the
+contact's `item_id`, and full result. Streamed runs are persisted identically, so all review
+endpoints apply afterwards. `regenerate/stream` does the same for one contact from stored inputs
+(no re-analyze).
 
 ### Example
 
@@ -113,9 +121,10 @@ curl -s -X POST localhost:8000/runs \
   -H "Content-Type: application/json" \
   -d @sample_input.json
 
-# -> {"runs":[{"run_id":"...","contact_name":"Aarav Mehta","status":"pending_review"}, ...]}
+# -> {"run_id":"...","items":[{"item_id":"...","contact_name":"Aarav Mehta","status":"pending_review"}, ...]}
 
-curl -s localhost:8000/runs/<run_id>
+curl -s localhost:8000/runs/<run_id>              # whole batch
+curl -s localhost:8000/recommendations/<item_id>  # one contact
 ```
 
 `sample_input.json` holds two contacts in different countries/currencies to exercise batching and
@@ -130,7 +139,7 @@ contact without affecting the others.
 
 The pipeline runs to completion and persists the result; review happens through separate
 endpoints (above) rather than a LangGraph `interrupt()`. This keeps the graph a pure function,
-decouples review from the run, and makes review durable across restarts — the run row stores the
+decouples review from the run, and makes review durable across restarts — each item row stores the
 graph `inputs`, so `regenerate` re-runs without the original request.
 
 `approve` / `reject` / `edit` are terminal. `regenerate` is the only looping action and is
