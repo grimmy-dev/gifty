@@ -49,7 +49,9 @@ class LLM:
         except Exception as exc:
             if tier == "smart":
                 log.warning("smart tier failed (%s); falling back to fast", exc)
-                return self.run(self.models["fast"], "fast", system, user, schema, max_tokens)
+                return self.run(
+                    self.models["fast"], "fast", system, user, schema, max_tokens
+                )
             raise
 
     def run(self, model, tier, system, user, schema: type[T], max_tokens):
@@ -57,7 +59,12 @@ class LLM:
         start = time.perf_counter()
         call = self.claude if self.provider == "claude" else self.gemini
         parsed, usage = retry_call(call, model, system, user, schema, max_tokens)
-        log_entry = {"model": model, "tier": tier, "ms": round((time.perf_counter() - start) * 1000), **usage}
+        log_entry = {
+            "model": model,
+            "tier": tier,
+            "ms": round((time.perf_counter() - start) * 1000),
+            **usage,
+        }
         return parsed, log_entry
 
     def claude(self, model, system, user, schema: type[T], max_tokens):
@@ -78,8 +85,13 @@ class LLM:
         block = next((b for b in resp.content if b.type == "tool_use"), None)
         if block is None:
             # Most often the model hit max_tokens before emitting the tool call.
-            raise RuntimeError(f"no structured output (stop_reason={resp.stop_reason}); raise max_tokens")
-        usage = {"tokens_in": resp.usage.input_tokens, "tokens_out": resp.usage.output_tokens}
+            raise RuntimeError(
+                f"no structured output (stop_reason={resp.stop_reason}); raise max_tokens"
+            )
+        usage = {
+            "tokens_in": resp.usage.input_tokens,
+            "tokens_out": resp.usage.output_tokens,
+        }
         return schema.model_validate(block.input), usage
 
     def gemini(self, model, system, user, schema: type[T], max_tokens):
@@ -98,7 +110,11 @@ class LLM:
             "tokens_in": getattr(meta, "prompt_token_count", 0),
             "tokens_out": getattr(meta, "candidates_token_count", 0),
         }
-        parsed = resp.parsed if isinstance(resp.parsed, schema) else schema.model_validate_json(resp.text)
+        parsed = (
+            resp.parsed
+            if isinstance(resp.parsed, schema)
+            else schema.model_validate_json(resp.text)
+        )
         return parsed, usage
 
 

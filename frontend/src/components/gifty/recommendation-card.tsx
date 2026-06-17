@@ -16,12 +16,7 @@ import type { Recommendation, ReviewStatus } from "@/lib/types"
 import { cn } from "@/lib/utils"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import {
-  Card,
-  CardContent,
-  CardFooter,
-  CardHeader,
-} from "@/components/ui/card"
+import { Card, CardContent, CardFooter, CardHeader } from "@/components/ui/card"
 import {
   Collapsible,
   CollapsibleContent,
@@ -32,7 +27,10 @@ import { Textarea } from "@/components/ui/textarea"
 import { CopyButton } from "@/components/gifty/copy-button"
 import { GiftMini, GiftPrimary } from "@/components/gifty/gift-cards"
 
-const actionBadge: Record<ReviewStatus, { label: string; variant: "secondary" | "destructive" | "default" }> = {
+const actionBadge: Record<
+  ReviewStatus,
+  { label: string; variant: "secondary" | "destructive" | "default" }
+> = {
   approved: { label: "Accepted", variant: "default" },
   rejected: { label: "Rejected", variant: "destructive" },
   edited: { label: "Edited", variant: "secondary" },
@@ -115,7 +113,7 @@ export const RecommendationCard = React.memo(function RecommendationCard({
   return (
     <Card
       className={cn(
-        "animate-in gap-0 py-0 transition-shadow duration-300 fade-in slide-in-from-bottom-2 [--card-spacing:--spacing(5)]",
+        "animate-in gap-0 py-0 transition-shadow duration-300 [--card-spacing:--spacing(5)] fade-in slide-in-from-bottom-2",
         chosen?.variant === "default" && "ring-primary/30"
       )}
     >
@@ -211,7 +209,10 @@ export const RecommendationCard = React.memo(function RecommendationCard({
               )}
               <div className="flex items-center gap-2">
                 <CopyButton value={exportJSON} label="copy" />
-                <Button variant="outline" onClick={() => downloadJSON(exportRec)}>
+                <Button
+                  variant="outline"
+                  onClick={() => downloadJSON(exportRec)}
+                >
                   <DownloadIcon />
                   json
                 </Button>

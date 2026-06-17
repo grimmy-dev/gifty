@@ -16,16 +16,12 @@ export function AppHeader() {
       </div>
       <p className="text-sm/relaxed text-balance text-muted-foreground">
         Add a contact and Gifty reads their profile, searches real in-budget
-        products, and ranks three picks. Each one comes with a personalised note,
-        ready for your review.
+        products, and ranks three picks. Each one comes with a personalised
+        note, ready for your review.
       </p>
       <TabsList aria-label="Switch view" className="space-x-2">
-        <TabsTrigger value="post">
-          Recommend
-        </TabsTrigger>
-        <TabsTrigger value="get">
-          Recent
-        </TabsTrigger>
+        <TabsTrigger value="post">Recommend</TabsTrigger>
+        <TabsTrigger value="get">Recent</TabsTrigger>
       </TabsList>
     </header>
   )

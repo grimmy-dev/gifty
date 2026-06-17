@@ -16,8 +16,16 @@ from search.tavily import search_client
 
 # Social/video/aggregator hosts that are never purchasable product pages.
 JUNK_HOSTS = (
-    "youtube.com", "instagram.com", "facebook.com", "twitter.com", "x.com",
-    "reddit.com", "pinterest.com", "linkedin.com", "quora.com", "goodreads.com",
+    "youtube.com",
+    "instagram.com",
+    "facebook.com",
+    "twitter.com",
+    "x.com",
+    "reddit.com",
+    "pinterest.com",
+    "linkedin.com",
+    "quora.com",
+    "goodreads.com",
 )
 # Codes meaning the page is genuinely gone. 403/406/429/503 are bot-blocks, not dead.
 DEAD_CODES = {404, 410}
@@ -84,7 +92,9 @@ def search(state: GraphState) -> dict:
             if p.url and p.url not in seen and not is_junk(p.url):
                 seen.add(p.url)
                 candidates.append(p)
-    return with_log(state, "search", {"results": len(candidates)}, candidates=candidates)
+    return with_log(
+        state, "search", {"results": len(candidates)}, candidates=candidates
+    )
 
 
 async def validate_products(state: GraphState) -> dict:
@@ -93,7 +103,9 @@ async def validate_products(state: GraphState) -> dict:
     headers = {"User-Agent": "Mozilla/5.0"}
     # Redirects disabled: a 3xx means the page exists (not dead) and chasing it
     # would reopen the SSRF hole that is_safe_url just closed.
-    async with httpx.AsyncClient(timeout=5, follow_redirects=False, headers=headers) as cl:
+    async with httpx.AsyncClient(
+        timeout=5, follow_redirects=False, headers=headers
+    ) as cl:
 
         async def alive(p: Product) -> Product | None:
             # HEAD avoids downloading the page body; 403/405/etc still count as alive.
@@ -107,15 +119,30 @@ async def validate_products(state: GraphState) -> dict:
         checked = await asyncio.gather(*(alive(p) for p in candidates))
     live = [p for p in checked if p][:20]
     if not live:
-        return with_log(state, "validate_products", {"live": 0, "kept": 0}, validated=[])
+        return with_log(
+            state, "validate_products", {"live": 0, "kept": 0}, validated=[]
+        )
 
     listing = "\n".join(f"{p.title} | {p.url} | {p.snippet}" for p in live)
     user = f"{contact_summary(state['contact'])}\n\nCandidates:\n{listing}"
-    out, log = await asyncio.to_thread(llm.generate, "fast", VALIDATE_SYS, user, Validation, 3000)
+    out, log = await asyncio.to_thread(
+        llm.generate, "fast", VALIDATE_SYS, user, Validation, 3000
+    )
     judged = {v.url: v for v in out.products}
     kept = [
-        Product(title=p.title, url=p.url, price=judged[p.url].price, store=judged[p.url].store, snippet=p.snippet)
+        Product(
+            title=p.title,
+            url=p.url,
+            price=judged[p.url].price,
+            store=judged[p.url].store,
+            snippet=p.snippet,
+        )
         for p in live
         if p.url in judged and judged[p.url].relevant
     ]
-    return with_log(state, "validate_products", {**log, "live": len(live), "kept": len(kept)}, validated=kept)
+    return with_log(
+        state,
+        "validate_products",
+        {**log, "live": len(live), "kept": len(kept)},
+        validated=kept,
+    )

@@ -22,8 +22,15 @@ function num(value: unknown): number | undefined {
 }
 
 /** One labelled key:value row in a gift's detail grid. */
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
-  if (children === null || children === undefined || children === "") return null
+function Field({
+  label,
+  children,
+}: {
+  label: string
+  children: React.ReactNode
+}) {
+  if (children === null || children === undefined || children === "")
+    return null
   return (
     <div className="grid grid-cols-1 gap-0.5 sm:grid-cols-[180px_1fr] sm:gap-4">
       <dt className="text-xs font-semibold tracking-wider text-muted-foreground uppercase sm:pt-0.5">
@@ -42,7 +49,11 @@ function GiftDetail({ gift }: { gift: RecommendedGift }) {
           <Badge variant={gift.rank === 1 ? "default" : "secondary"}>
             Rank {gift.rank}
           </Badge>
-          {gift.rank === 1 && <Badge variant="outline" className="p-2 bg-emerald-400/50">Top pick</Badge>}
+          {gift.rank === 1 && (
+            <Badge variant="outline" className="bg-emerald-400/50 p-2">
+              Top pick
+            </Badge>
+          )}
           <h2 className="font-heading text-lg leading-tight font-semibold">
             {gift.gift_name}
           </h2>
@@ -53,7 +64,10 @@ function GiftDetail({ gift }: { gift: RecommendedGift }) {
       <dl className="flex flex-col gap-3">
         <Field label="Store">{gift.store}</Field>
         <Field label="Estimated price">
-          <Badge variant="outline" className={cn("font-normal", priceBadgeClass)}>
+          <Badge
+            variant="outline"
+            className={cn("font-normal", priceBadgeClass)}
+          >
             {gift.estimated_price}
           </Badge>
         </Field>
@@ -66,7 +80,7 @@ function GiftDetail({ gift }: { gift: RecommendedGift }) {
               className="break-all text-primary underline-offset-4 hover:underline"
             >
               {gift.product_url}
-              <ExternalLinkIcon className="ml-1 mb-0.5 inline size-3 align-text-bottom" />
+              <ExternalLinkIcon className="mb-0.5 ml-1 inline size-3 align-text-bottom" />
             </a>
           ) : null}
         </Field>
@@ -84,7 +98,10 @@ function GiftDetail({ gift }: { gift: RecommendedGift }) {
         <Field label="Confidence">
           <Badge
             variant="outline"
-            className={cn("font-normal", confidenceBadgeClass(gift.confidence_score))}
+            className={cn(
+              "font-normal",
+              confidenceBadgeClass(gift.confidence_score)
+            )}
           >
             {confidencePct(gift.confidence_score)} sure
           </Badge>
@@ -148,7 +165,9 @@ export function DetailPage({ itemId }: { itemId: string }) {
     let active = true
     getItem(itemId)
       .then((res) => active && setItem(res))
-      .catch((e) => active && setError(errMsg(e, "Failed to load recommendation.")))
+      .catch(
+        (e) => active && setError(errMsg(e, "Failed to load recommendation."))
+      )
     return () => {
       active = false
     }
@@ -181,7 +200,9 @@ export function DetailPage({ itemId }: { itemId: string }) {
 
 function DetailBody({ item }: { item: RunItem }) {
   const data = item.data
-  const gifts = [...(data.recommended_gifts ?? [])].sort((a, b) => a.rank - b.rank)
+  const gifts = [...(data.recommended_gifts ?? [])].sort(
+    (a, b) => a.rank - b.rank
+  )
   const signals = data.profile_signals
   const search = data.search_trace
   const trace = data.trace ?? []
@@ -192,7 +213,9 @@ function DetailBody({ item }: { item: RunItem }) {
     <>
       <div className="flex flex-col gap-2">
         <div className="flex flex-wrap items-center gap-2">
-          <h1 className="font-heading text-3xl font-bold">{item.contact_name}</h1>
+          <h1 className="font-heading text-3xl font-bold">
+            {item.contact_name}
+          </h1>
           <Badge variant="secondary">{item.status.replace(/_/g, " ")}</Badge>
         </div>
         <span className="font-mono text-xs text-muted-foreground">
@@ -225,7 +248,10 @@ function DetailBody({ item }: { item: RunItem }) {
           <div className="flex flex-col gap-3">
             <SignalList title="Strong signals" items={signals.strong_signals} />
             <SignalList title="Weak signals" items={signals.weak_signals} />
-            <SignalList title="Signals avoided" items={signals.signals_to_avoid} />
+            <SignalList
+              title="Signals avoided"
+              items={signals.signals_to_avoid}
+            />
           </div>
         )}
 

@@ -12,16 +12,48 @@ from utils.prompts import ANALYZE_SYS, batch_summary
 # to collide with benign words (e.g. "jewish" not "jew" which hits "jewelry").
 SENSITIVE_TERMS = (
     # Category keywords.
-    "religio", "politic", "health", "illness", "medical", "ethnic", "race", "caste",
-    "gender", "sexual", "pregnan", "marriage", "married", "wife", "husband", "family",
-    "child", "kids", "disab",
+    "religio",
+    "politic",
+    "health",
+    "illness",
+    "medical",
+    "ethnic",
+    "race",
+    "caste",
+    "gender",
+    "sexual",
+    "pregnan",
+    "marriage",
+    "married",
+    "wife",
+    "husband",
+    "family",
+    "child",
+    "kids",
+    "disab",
     # Named religions / belief.
-    "hindu", "muslim", "islam", "christian", "catholic", "jewish", "buddhis", "sikh",
+    "hindu",
+    "muslim",
+    "islam",
+    "christian",
+    "catholic",
+    "jewish",
+    "buddhis",
+    "sikh",
     "atheist",
     # Health / medical instances.
-    "injury", "surgery", "diagnos", "cancer", "disease",
+    "injury",
+    "surgery",
+    "diagnos",
+    "cancer",
+    "disease",
     # Relationship / family-status instances.
-    "divorce", "widow", "spouse", "fianc", "lgbt", "queer",
+    "divorce",
+    "widow",
+    "spouse",
+    "fianc",
+    "lgbt",
+    "queer",
 )
 
 SIGNALS_TO_AVOID = [
@@ -43,7 +75,9 @@ class BatchAnalysis(BaseModel):
 
 def scrub(signals: list[str]) -> list[str]:
     """Remove signals referencing sensitive attributes."""
-    return [s for s in signals if not any(term in s.lower() for term in SENSITIVE_TERMS)]
+    return [
+        s for s in signals if not any(term in s.lower() for term in SENSITIVE_TERMS)
+    ]
 
 
 def to_signals(analysis: ContactAnalysis) -> ProfileSignals:

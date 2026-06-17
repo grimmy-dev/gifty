@@ -131,7 +131,7 @@ class RecommendedGift(BaseModel):
         """Accept 0-1 or a 0-100 percentage; clamp into [0, 1]."""
         try:
             f = float(v)  # type: ignore[arg-type]
-        except (TypeError, ValueError):
+        except TypeError, ValueError:
             return v
         if f > 1.0:
             f /= 100.0

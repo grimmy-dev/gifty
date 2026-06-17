@@ -67,7 +67,11 @@ function BatchGroup({
         <div className="flex flex-col gap-4 border-t p-4">
           {items ? (
             items.map((item) => (
-              <RecommendationCard key={item.id} run={runFromItem(item)} readOnly />
+              <RecommendationCard
+                key={item.id}
+                run={runFromItem(item)}
+                readOnly
+              />
             ))
           ) : (
             <div className="flex items-center gap-2 py-4 text-sm text-muted-foreground">

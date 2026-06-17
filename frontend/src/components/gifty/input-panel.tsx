@@ -53,12 +53,16 @@ export function InputPanel({
         spellCheck={false}
         disabled={busy}
         className={cn(
-          "resize-none rounded-xl p-4 font-mono text-xs leading-relaxed transition-[height] duration-300 ease-out scrollbar-none",
+          "resize-none scrollbar-none rounded-xl p-4 font-mono text-xs leading-relaxed transition-[height] duration-300 ease-out",
           compact ? "h-28" : "h-72"
         )}
       />
       <div className="flex flex-wrap items-center gap-2.5">
-        <Button size="lg" onClick={onRecommend} disabled={busy || !value.trim()}>
+        <Button
+          size="lg"
+          onClick={onRecommend}
+          disabled={busy || !value.trim()}
+        >
           <SendIcon />
           Recommend
         </Button>

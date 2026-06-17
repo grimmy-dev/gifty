@@ -8,7 +8,12 @@ import {
 } from "@/lib/api"
 import { parseRunRequest } from "@/lib/sample"
 import { errMsg } from "@/lib/utils"
-import type { Recommendation, ReviewStatus, RunItem, StreamEvent } from "@/lib/types"
+import type {
+  Recommendation,
+  ReviewStatus,
+  RunItem,
+  StreamEvent,
+} from "@/lib/types"
 
 export type RunPhase = "streaming" | "ready" | "error"
 
@@ -34,7 +39,9 @@ export function runFromItem(item: RunItem): ContactRun {
     }
   }
   const action =
-    item.status === "approved" || item.status === "rejected" || item.status === "edited"
+    item.status === "approved" ||
+    item.status === "rejected" ||
+    item.status === "edited"
       ? item.status
       : undefined
   return {
@@ -249,11 +256,7 @@ export function useGifty() {
 
   React.useEffect(() => () => abortRef.current?.abort(), [])
 
-  const phase = isStreaming
-    ? "streaming"
-    : runs.length > 0
-      ? "results"
-      : "idle"
+  const phase = isStreaming ? "streaming" : runs.length > 0 ? "results" : "idle"
 
   return {
     runs,

@@ -40,7 +40,9 @@ def init_db() -> None:
             )
             """
         )
-        c.execute("CREATE INDEX IF NOT EXISTS idx_items_run ON items (run_id, created_at)")
+        c.execute(
+            "CREATE INDEX IF NOT EXISTS idx_items_run ON items (run_id, created_at)"
+        )
 
 
 def new_run_id() -> str:
@@ -59,7 +61,9 @@ def _row_to_item(row: sqlite3.Row) -> dict:
     }
 
 
-def create_item(run_id: str, contact_name: str, data: dict, status: str = "pending_review") -> str:
+def create_item(
+    run_id: str, contact_name: str, data: dict, status: str = "pending_review"
+) -> str:
     """Insert one contact's recommendation into a batch run; return its item id."""
     item_id = uuid.uuid4().hex[:12]
     with connect() as c:
@@ -77,7 +81,9 @@ def get_item(item_id: str) -> dict | None:
     return _row_to_item(row) if row else None
 
 
-def update_item(item_id: str, *, status: str | None = None, data: dict | None = None) -> None:
+def update_item(
+    item_id: str, *, status: str | None = None, data: dict | None = None
+) -> None:
     sets, args = [], []
     if status is not None:
         sets.append("status=?")
@@ -120,7 +126,11 @@ def list_batches(limit: int = 20) -> list[dict]:
                     "run_id": r["run_id"],
                     "created_at": r["ts"],
                     "contacts": [
-                        {"item_id": x["id"], "contact_name": x["contact_name"], "status": x["status"]}
+                        {
+                            "item_id": x["id"],
+                            "contact_name": x["contact_name"],
+                            "status": x["status"],
+                        }
                         for x in rows
                     ],
                 }

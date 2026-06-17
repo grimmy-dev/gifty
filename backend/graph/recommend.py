@@ -17,7 +17,9 @@ def recommend(state: GraphState) -> dict:
     validated, c, sig = state["validated"], state["contact"], state["signals"]
     if not validated:
         return with_log(state, "recommend", {"count": 0}, ranked=[])
-    listing = "\n".join(f"- {p.title} | {p.url} | price={p.price} | store={p.store}" for p in validated)
+    listing = "\n".join(
+        f"- {p.title} | {p.url} | price={p.price} | store={p.store}" for p in validated
+    )
     feedback = state.get("review_feedback")
     feedback_block = (
         f"\n\nThe reviewer rejected the previous picks with this feedback - honour it:\n{feedback}"

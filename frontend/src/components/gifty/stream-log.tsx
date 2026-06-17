@@ -42,10 +42,7 @@ export function StreamLog({ lines, active }: StreamLogProps) {
           </>
         ) : (
           <>
-            <span
-              className="size-2 rounded-full bg-emerald-500"
-              aria-hidden
-            />
+            <span className="size-2 rounded-full bg-emerald-500" aria-hidden />
             <span>Run complete</span>
           </>
         )}
@@ -57,7 +54,9 @@ export function StreamLog({ lines, active }: StreamLogProps) {
         <ol className="flex flex-col gap-1.5 p-4 font-mono text-[0.8rem]">
           {lines.map((line) => (
             <li key={line.id} className="flex gap-2 leading-relaxed">
-              <span className={cn("shrink-0 select-none", kindMarker[line.kind])}>
+              <span
+                className={cn("shrink-0 select-none", kindMarker[line.kind])}
+              >
                 ›
               </span>
               <span className="min-w-0">

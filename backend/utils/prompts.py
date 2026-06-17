@@ -71,4 +71,6 @@ def contact_summary(c: Contact) -> str:
 
 def batch_summary(contacts: list[Contact]) -> str:
     """Render several contacts as a numbered block for one analyze call."""
-    return "\n\n".join(f"[Contact {i + 1}]\n{contact_summary(c)}" for i, c in enumerate(contacts))
+    return "\n\n".join(
+        f"[Contact {i + 1}]\n{contact_summary(c)}" for i, c in enumerate(contacts)
+    )

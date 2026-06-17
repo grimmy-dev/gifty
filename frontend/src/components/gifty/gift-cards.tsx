@@ -131,7 +131,7 @@ export const GiftMini = React.memo(function GiftMini({
           {confidencePct(gift.confidence_score)} sure
         </span>
       </div>
-      <h4 className="font-medium leading-snug">{gift.gift_name}</h4>
+      <h4 className="leading-snug font-medium">{gift.gift_name}</h4>
       <p className="line-clamp-3 text-xs text-muted-foreground">
         {gift.why_this_gift}
       </p>

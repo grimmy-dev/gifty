@@ -86,6 +86,7 @@ def register_handlers(app: FastAPI) -> None:
 
     app.add_middleware(EnvelopeErrors)
 
+
 RETRYABLE_CODES = {429, 500, 502, 503, 504}
 RETRYABLE_HINTS = ("connection", "timeout", "unavailable", "overloaded", "ratelimit")
 
@@ -99,7 +100,9 @@ def is_retryable(exc: Exception) -> bool:
     return any(hint in name for hint in RETRYABLE_HINTS)
 
 
-def retry_call(fn: Callable[..., T], *args, attempts: int = 3, base: float = 5.0, **kwargs) -> T:
+def retry_call(
+    fn: Callable[..., T], *args, attempts: int = 3, base: float = 5.0, **kwargs
+) -> T:
     """Call fn with jittered exponential backoff on retryable errors.
 
     Args:
@@ -113,6 +116,12 @@ def retry_call(fn: Callable[..., T], *args, attempts: int = 3, base: float = 5.0
             if not is_retryable(exc) or i == attempts - 1:
                 raise
             delay = base * (2**i) + random.uniform(0, base)
-            log.warning("retryable error (%s); attempt %d/%d, sleeping %.1fs", exc, i + 1, attempts, delay)
+            log.warning(
+                "retryable error (%s); attempt %d/%d, sleeping %.1fs",
+                exc,
+                i + 1,
+                attempts,
+                delay,
+            )
             time.sleep(delay)
     raise RuntimeError("unreachable")
