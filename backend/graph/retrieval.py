@@ -74,8 +74,9 @@ async def validate_products(state: GraphState) -> dict:
     async with httpx.AsyncClient(timeout=5, follow_redirects=True, headers=headers) as cl:
 
         async def alive(p: Product) -> Product | None:
+            # HEAD avoids downloading the page body; 403/405/etc still count as alive.
             try:
-                return None if (await cl.get(p.url)).status_code in DEAD_CODES else p
+                return None if (await cl.head(p.url)).status_code in DEAD_CODES else p
             except httpx.HTTPError:
                 return None
 

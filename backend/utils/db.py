@@ -11,8 +11,12 @@ from config import settings
 @contextmanager
 def connect():
     """Yield a SQLite connection, committing on success."""
-    conn = sqlite3.connect(settings.db_path)
+    conn = sqlite3.connect(settings.db_path, timeout=10)
     conn.row_factory = sqlite3.Row
+    # WAL lets readers and the writer proceed concurrently (sync DB calls run in a
+    # threadpool); the busy timeout above absorbs brief write contention.
+    conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("PRAGMA busy_timeout=10000")
     try:
         yield conn
         conn.commit()
@@ -35,6 +39,7 @@ def init_db() -> None:
             )
             """
         )
+        c.execute("CREATE INDEX IF NOT EXISTS idx_runs_user_created ON runs (user_id, created_at DESC)")
 
 
 def create_run(user_id: str, contact_name: str, data: dict, status: str = "pending_review") -> str:

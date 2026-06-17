@@ -59,6 +59,7 @@ cp .env.example .env      # then fill in keys
 - `LLM_PROVIDER` — `claude` or `gemini`
 - `ANTHROPIC_API_KEY` / `GEMINI_API_KEY` — key for the chosen provider
 - `TAVILY_API_KEY` — required for search
+- `CORS_ORIGINS` — allowed frontend origins (JSON list; default `localhost:5173`)
 
 The provider runs two tiers: a **fast** model for retrieval/prep (analyze, validate) and a
 **smart** model for the recommendation. Switch providers with one env var; both are supported.
@@ -80,16 +81,30 @@ uv run uvicorn app:app --reload --port 8000
 | `POST` | `/runs/{id}/reject` | mark the result rejected (optional `note`) |
 | `POST` | `/runs/{id}/edit` | replace `recommended_gifts` with reviewer-edited ones |
 | `POST` | `/runs/{id}/regenerate` | re-run the pipeline, optionally steered by reviewer `feedback` |
-| `POST` | `/runs/stream` | run one contact with live **SSE** progress (UI path) |
+| `POST` | `/runs/stream` | run all contacts over one **SSE** connection (UI path) |
 | `POST` | `/runs/{id}/regenerate/stream` | regenerate with live **SSE** progress |
+
+### Errors
+
+Every non-2xx response shares one envelope:
+
+```json
+{ "error": { "code": "VALIDATION_ERROR", "message": "Request validation failed", "details": [...] } }
+```
+
+`code` is machine-readable (`VALIDATION_ERROR`, `NOT_FOUND`, `CONFLICT`, `INTERNAL_ERROR`, …);
+validation errors carry per-field `details`. `5xx` messages are generic — internals are logged,
+never returned.
 
 ### Streaming (SSE)
 
 `POST /runs` is the batch path (Postman/curl → poll `GET /runs/{id}`). The UI uses the SSE path
-for live "thinking": `POST /runs/stream` emits `start` → `analyze` → one `node` event per graph
-node (carrying that node's log: model, tokens, ms) → a final `result` event with the `run_id` and
-full result. The streamed run is persisted identically, so all review endpoints apply afterwards.
-`regenerate/stream` does the same from stored inputs (no re-analyze).
+for live "thinking": `POST /runs/stream` analyzes once, then walks the contacts **sequentially over
+a single connection** (one graph at a time — kept deliberately light). It emits `start` →
+`analyze` → per contact a stream of `node` events (each tagged `contact_name`, carrying that node's
+log: model, tokens, ms) and a `result` event with the contact's `run_id` and full result. Streamed
+runs are persisted identically, so all review endpoints apply afterwards. `regenerate/stream` does
+the same for one contact from stored inputs (no re-analyze).
 
 ### Example
 

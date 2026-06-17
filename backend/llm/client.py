@@ -75,7 +75,10 @@ class LLM:
             tools=[tool],
             tool_choice={"type": "tool", "name": "emit"},
         )
-        block = next(b for b in resp.content if b.type == "tool_use")
+        block = next((b for b in resp.content if b.type == "tool_use"), None)
+        if block is None:
+            # Most often the model hit max_tokens before emitting the tool call.
+            raise RuntimeError(f"no structured output (stop_reason={resp.stop_reason}); raise max_tokens")
         usage = {"tokens_in": resp.usage.input_tokens, "tokens_out": resp.usage.output_tokens}
         return schema.model_validate(block.input), usage
 

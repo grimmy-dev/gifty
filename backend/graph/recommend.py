@@ -8,22 +8,8 @@ from utils.models import RecommendedGift
 from utils.prompts import RECOMMEND_SYS, contact_summary
 
 
-class RankedGift(BaseModel):
-    rank: int
-    gift_name: str
-    product_url: str
-    store: str
-    estimated_price: str
-    why_this_gift: str
-    personalisation_reasoning: str
-    personalised_message: str
-    confidence_score: float
-    risk_level: str
-    assumptions: list[str]
-
-
 class RecommendOut(BaseModel):
-    gifts: list[RankedGift]
+    gifts: list[RecommendedGift]
 
 
 def recommend(state: GraphState) -> dict:
@@ -43,5 +29,4 @@ def recommend(state: GraphState) -> dict:
         f"Validated candidates:\n{listing}{feedback_block}"
     )
     out, log = llm.generate("smart", RECOMMEND_SYS, user, RecommendOut, max_tokens=3000)
-    gifts = [RecommendedGift(**g.model_dump()) for g in out.gifts[:3]]
-    return with_log(state, "recommend", log, ranked=gifts)
+    return with_log(state, "recommend", log, ranked=out.gifts[:3])

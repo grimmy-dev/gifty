@@ -23,5 +23,8 @@ class Settings(BaseSettings):
     batch_size: int = 4
     max_concurrency: int = 3
 
+    # Allowed browser origins for the Vite frontend (comma-separated in .env).
+    cors_origins: list[str] = ["http://localhost:5173", "http://127.0.0.1:5173"]
+
 
 settings = Settings()
