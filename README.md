@@ -23,14 +23,14 @@ For the design rationale (what was chosen, and how it differs from the common ap
 Needs [`uv`](https://docs.astral.sh/uv/) (Python) and [`bun`](https://bun.sh/) (frontend).
 
 ```bash
-./dev.sh setup        # install backend + frontend deps, create backend/.env
+./dev.sh setup # install backend + frontend deps, create backend/.env
 ```
 
 Add your API keys to `backend/.env`: an LLM provider key (`ANTHROPIC_API_KEY` or
 `GEMINI_API_KEY`) plus `TAVILY_API_KEY` for search. Then:
 
 ```bash
-./dev.sh              # run backend (:8000) and frontend (:5173) together
+./dev.sh # run backend (:8000) and frontend (:5173) together
 ```
 
 Open `http://localhost:5173`, load the sample data, and run it. Ctrl-C stops both servers.
@@ -46,7 +46,7 @@ POST /runs  (N contacts)
   |             scrub sensitive signals            deterministic guard, no LLM
   |
   |- Stage 2: per-contact graph (concurrent, bounded)
-                search -> validate -> recommend
+                search -> validate -> recommend(reasoning model)
                             retry once if fewer than 3 grounded products survive
 ```
 

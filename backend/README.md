@@ -88,8 +88,8 @@ managed with [`uv`](https://docs.astral.sh/uv/) and linted with `ruff`.
 
 ```bash
 cd backend
-uv sync                  # install dependencies into .venv
-cp .env.example .env     # then fill in your keys
+uv sync # install dependencies into .venv
+cp .env.example .env # then fill in your keys
 ```
 
 ### Configuration (`.env`)
@@ -146,8 +146,8 @@ curl -s -X POST localhost:8000/runs \
   -d @sample_input.json
 # -> {"run_id":"...","items":[{"item_id":"...","contact_name":"Aarav Mehta","status":"pending_review"}, ...]}
 
-curl -s localhost:8000/runs/<run_id>              # whole batch
-curl -s localhost:8000/recommendations/<item_id>  # one contact's full result
+curl -s localhost:8000/runs/<run_id> # whole batch
+curl -s localhost:8000/recommendations/<item_id> # one contact's full result
 ```
 
 `sample_input.json` holds two contacts in different countries/currencies to exercise batching and

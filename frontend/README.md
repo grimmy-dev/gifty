@@ -58,7 +58,7 @@ The backend's `CORS_ORIGINS` must include this app's origin (`http://localhost:5
 ## Run
 
 ```bash
-bun run dev        # dev server at http://localhost:5173
+bun run dev # dev server at http://localhost:5173
 ```
 
 Start the backend first (see [`../backend/README.md`](../backend/README.md)), then open the dev
