@@ -1,121 +1,108 @@
-import { useState } from 'react'
-import reactLogo from './assets/react.svg'
-import viteLogo from './assets/vite.svg'
-import heroImg from './assets/hero.png'
-import './App.css'
+import * as React from "react"
+import { AlertCircleIcon, Trash2Icon, XIcon } from "lucide-react"
 
-function App() {
-  const [count, setCount] = useState(0)
+import { useGifty } from "@/hooks/use-gifty"
+import { SAMPLE_JSON } from "@/lib/sample"
+import { Button } from "@/components/ui/button"
+import { Tabs, TabsContent } from "@/components/ui/tabs"
+import { AppHeader } from "@/components/gifty/app-header"
+import { InputPanel } from "@/components/gifty/input-panel"
+import { RecentPanel } from "@/components/gifty/recent-panel"
+import { RecommendationCard } from "@/components/gifty/recommendation-card"
+import { StreamLog } from "@/components/gifty/stream-log"
+
+export function App() {
+  const [mode, setMode] = React.useState("post")
+  const [input, setInput] = React.useState("")
+  const gifty = useGifty()
+  const { phase, runs, log, runId, isStreaming, error, review, rerun } = gifty
+
+  const compact = phase !== "idle"
 
   return (
-    <>
-      <section id="center">
-        <div className="hero">
-          <img src={heroImg} className="base" width="170" height="179" alt="" />
-          <img src={reactLogo} className="framework" alt="React logo" />
-          <img src={viteLogo} className="vite" alt="Vite logo" />
-        </div>
-        <div>
-          <h1>Get started</h1>
-          <p>
-            Edit <code>src/App.tsx</code> and save to test <code>HMR</code>
-          </p>
-        </div>
-        <button
-          type="button"
-          className="counter"
-          onClick={() => setCount((count) => count + 1)}
-        >
-          Count is {count}
-        </button>
-      </section>
+    <Tabs
+      value={mode}
+      onValueChange={setMode}
+      className="mx-auto flex min-h-svh w-full max-w-4xl flex-col gap-12 px-6 py-16 sm:py-20"
+    >
+      <AppHeader />
 
-      <div className="ticks"></div>
+      <TabsContent value="post" className="flex flex-col gap-8">
+        <InputPanel
+          value={input}
+          onChange={setInput}
+          onRecommend={() => gifty.recommend(input)}
+          onUseSample={() => setInput(SAMPLE_JSON)}
+          busy={isStreaming}
+          compact={compact}
+        />
 
-      <section id="next-steps">
-        <div id="docs">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#documentation-icon"></use>
-          </svg>
-          <h2>Documentation</h2>
-          <p>Your questions, answered</p>
-          <ul>
-            <li>
-              <a href="https://vite.dev/" target="_blank">
-                <img className="logo" src={viteLogo} alt="" />
-                Explore Vite
-              </a>
-            </li>
-            <li>
-              <a href="https://react.dev/" target="_blank">
-                <img className="button-icon" src={reactLogo} alt="" />
-                Learn more
-              </a>
-            </li>
-          </ul>
-        </div>
-        <div id="social">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#social-icon"></use>
-          </svg>
-          <h2>Connect with us</h2>
-          <p>Join the Vite community</p>
-          <ul>
-            <li>
-              <a href="https://github.com/vitejs/vite" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#github-icon"></use>
-                </svg>
-                GitHub
-              </a>
-            </li>
-            <li>
-              <a href="https://chat.vite.dev/" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#discord-icon"></use>
-                </svg>
-                Discord
-              </a>
-            </li>
-            <li>
-              <a href="https://x.com/vite_js" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#x-icon"></use>
-                </svg>
-                X.com
-              </a>
-            </li>
-            <li>
-              <a href="https://bsky.app/profile/vite.dev" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#bluesky-icon"></use>
-                </svg>
-                Bluesky
-              </a>
-            </li>
-          </ul>
-        </div>
-      </section>
+        {error && (
+          <div
+            role="alert"
+            className="flex animate-in items-start gap-2 rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive duration-300 fade-in slide-in-from-top-1"
+          >
+            <AlertCircleIcon className="mt-0.5 size-4 shrink-0" />
+            <span className="flex-1">{error}</span>
+            <button
+              onClick={gifty.clearError}
+              aria-label="Dismiss error"
+              className="shrink-0 opacity-70 hover:opacity-100"
+            >
+              <XIcon className="size-4" />
+            </button>
+          </div>
+        )}
 
-      <div className="ticks"></div>
-      <section id="spacer"></section>
-    </>
+        {(log.length > 0 || runs.length > 0) && (
+          <div className="flex items-center justify-between">
+            <div className="flex flex-col gap-0.5">
+              <h2 className="font-heading text-lg font-semibold">
+                {isStreaming ? "Working" : "Results"}
+              </h2>
+              {runId && (
+                <span className="font-mono text-xs text-muted-foreground">
+                  run {runId}
+                </span>
+              )}
+            </div>
+            <Button
+              variant="ghost"
+              onClick={() => {
+                gifty.clear()
+                setInput("")
+              }}
+            >
+              <Trash2Icon />
+              Clear
+            </Button>
+          </div>
+        )}
+
+        {log.length > 0 && <StreamLog lines={log} active={isStreaming} />}
+
+        {runs.length > 0 && (
+          <section className="flex flex-col gap-6" aria-label="Recommendations">
+            {runs.map((run) => (
+              <RecommendationCard
+                key={run.name}
+                run={run}
+                onReview={review}
+                onRerun={rerun}
+              />
+            ))}
+          </section>
+        )}
+      </TabsContent>
+
+      <TabsContent value="get">
+        <RecentPanel />
+      </TabsContent>
+
+      <footer className="mt-auto pt-4 text-center font-mono text-xs text-muted-foreground/70">
+        Press <kbd className="rounded bg-muted px-1">d</kbd> to toggle theme
+      </footer>
+    </Tabs>
   )
 }
 
