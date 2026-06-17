@@ -14,7 +14,7 @@ from pydantic import ValidationError
 
 from analyze import SIGNALS_TO_AVOID, ContactAnalysis, scrub, to_signals
 from graph.build import route_after_validate
-from graph.retrieval import is_junk
+from graph.retrieval import is_junk, is_safe_url
 from utils.models import GiftContext, RecommendedGift, RunRequest
 
 
@@ -104,6 +104,31 @@ def test_is_junk_flags_social_and_aggregator_hosts(url):
 )
 def test_is_junk_allows_real_stores(url):
     assert is_junk(url) is False
+
+
+# ---------- SSRF guard (numeric hosts / bad schemes: no DNS, hermetic) ----------
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "http://127.0.0.1/admin",  # loopback
+        "http://169.254.169.254/latest/meta-data/",  # cloud metadata
+        "http://10.0.0.5/internal",  # private
+        "http://192.168.1.1/",  # private
+        "http://[::1]/",  # IPv6 loopback
+        "ftp://example.com/x",  # non-http scheme
+        "file:///etc/passwd",  # local file
+        "not-a-url",  # no host
+    ],
+)
+async def test_is_safe_url_blocks_internal_and_bad_schemes(url):
+    assert await is_safe_url(url) is False
+
+
+@pytest.mark.parametrize("url", ["http://8.8.8.8/", "https://1.1.1.1/path"])
+async def test_is_safe_url_allows_public_ips(url):
+    assert await is_safe_url(url) is True
 
 
 # ---------- Defensive parsing of model output ----------

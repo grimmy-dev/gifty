@@ -1,6 +1,8 @@
 """Pipeline nodes for query generation, web search, and product validation."""
 
 import asyncio
+import ipaddress
+import socket
 from urllib.parse import urlparse
 
 import httpx
@@ -25,6 +27,24 @@ def is_junk(url: str) -> bool:
     """True if the URL host is a social/video/aggregator site, not a store."""
     host = urlparse(url).netloc.lower()
     return any(j in host for j in JUNK_HOSTS)
+
+
+async def is_safe_url(url: str) -> bool:
+    """SSRF guard: http(s) only, and every resolved IP must be public.
+
+    We fetch search-result URLs server-side, so block anything that resolves to
+    loopback/private/link-local space (e.g. cloud metadata at 169.254.169.254).
+    Note: httpx re-resolves on connect, so a short-TTL rebind could still slip a
+    request through; acceptable here, and redirects are disabled below.
+    """
+    parsed = urlparse(url)
+    if parsed.scheme not in ("http", "https") or not parsed.hostname:
+        return False
+    try:
+        infos = await asyncio.get_running_loop().getaddrinfo(parsed.hostname, None)
+    except socket.gaierror:
+        return False
+    return all(ipaddress.ip_address(info[4][0]).is_global for info in infos)
 
 
 class Queries(BaseModel):
@@ -71,10 +91,14 @@ async def validate_products(state: GraphState) -> dict:
     """Drop dead links, then keep candidates judged relevant and appropriate."""
     candidates = state["candidates"]
     headers = {"User-Agent": "Mozilla/5.0"}
-    async with httpx.AsyncClient(timeout=5, follow_redirects=True, headers=headers) as cl:
+    # Redirects disabled: a 3xx means the page exists (not dead) and chasing it
+    # would reopen the SSRF hole that is_safe_url just closed.
+    async with httpx.AsyncClient(timeout=5, follow_redirects=False, headers=headers) as cl:
 
         async def alive(p: Product) -> Product | None:
             # HEAD avoids downloading the page body; 403/405/etc still count as alive.
+            if not await is_safe_url(p.url):
+                return None
             try:
                 return None if (await cl.head(p.url)).status_code in DEAD_CODES else p
             except httpx.HTTPError:
