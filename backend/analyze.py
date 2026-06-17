@@ -8,10 +8,20 @@ from utils.prompts import ANALYZE_SYS, batch_summary
 
 # Deterministic guard: drop any signal mentioning a sensitive attribute, regardless of
 # what the model returns. Cheap and reliable backstop to the prompt instruction.
+# Substrings are matched case-insensitively, so each term must be specific enough not
+# to collide with benign words (e.g. "jewish" not "jew" which hits "jewelry").
 SENSITIVE_TERMS = (
+    # Category keywords.
     "religio", "politic", "health", "illness", "medical", "ethnic", "race", "caste",
     "gender", "sexual", "pregnan", "marriage", "married", "wife", "husband", "family",
     "child", "kids", "disab",
+    # Named religions / belief.
+    "hindu", "muslim", "islam", "christian", "catholic", "jewish", "buddhis", "sikh",
+    "atheist",
+    # Health / medical instances.
+    "injury", "surgery", "diagnos", "cancer", "disease",
+    # Relationship / family-status instances.
+    "divorce", "widow", "spouse", "fianc", "lgbt", "queer",
 )
 
 SIGNALS_TO_AVOID = [
