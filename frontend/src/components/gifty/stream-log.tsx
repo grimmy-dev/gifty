@@ -24,7 +24,9 @@ interface StreamLogProps {
   active: boolean
 }
 
+/** Live, colour-coded log of pipeline steps that auto-scrolls as lines arrive. */
 export function StreamLog({ lines, active }: StreamLogProps) {
+  // Anchor at the bottom of the list to scroll into view after each new line.
   const endRef = React.useRef<HTMLDivElement>(null)
 
   // Auto-scroll to the newest line; depends only on count to stay cheap.

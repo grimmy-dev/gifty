@@ -28,6 +28,7 @@ interface InputPanelProps {
   compact: boolean
 }
 
+/** JSON entry: textarea plus recommend, sample-fill, and file-upload actions. */
 export function InputPanel({
   value,
   onChange,
@@ -36,6 +37,7 @@ export function InputPanel({
   busy,
   compact,
 }: InputPanelProps) {
+  // Drives the hidden file input from the visible "Upload .json" button.
   const fileRef = React.useRef<HTMLInputElement>(null)
 
   async function onFile(e: React.ChangeEvent<HTMLInputElement>) {

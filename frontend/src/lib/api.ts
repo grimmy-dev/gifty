@@ -1,3 +1,4 @@
+// Typed client for the backend: plain JSON calls plus the SSE-over-POST streams.
 import type {
   BatchRun,
   BatchSummary,
@@ -8,12 +9,14 @@ import type {
   StreamEvent,
 } from "@/lib/types"
 
+// Backend base URL; overridable per-env via VITE_API_BASE, else local default.
 const BASE = import.meta.env.VITE_API_BASE ?? "http://localhost:8000"
 
 interface ErrorEnvelope {
   error?: { code?: string; message?: string }
 }
 
+// Turn a non-2xx response into a thrown Error, preferring the backend's message.
 async function fail(res: Response): Promise<never> {
   let message = `Request failed (${res.status})`
   try {
@@ -107,18 +110,20 @@ async function* streamSSE(
 
   const reader = res.body!.getReader()
   const decoder = new TextDecoder()
-  let buffer = ""
+  let buffer = "" // Holds bytes that don't yet form a complete frame.
 
   try {
     while (true) {
       const { done, value } = await reader.read()
       if (done) break
+      // Chunks arrive at arbitrary boundaries; accumulate then split on frames.
       buffer += decoder.decode(value, { stream: true })
 
+      // SSE frames are separated by a blank line; drain every complete one.
       let split: number
       while ((split = buffer.indexOf("\n\n")) !== -1) {
         const frame = buffer.slice(0, split)
-        buffer = buffer.slice(split + 2)
+        buffer = buffer.slice(split + 2) // Keep the remainder for the next read.
         const parsed = parseFrame(frame)
         if (parsed) yield parsed
       }
@@ -128,6 +133,7 @@ async function* streamSSE(
   }
 }
 
+// Parse one SSE frame ("event:"/"data:" lines) into a typed StreamEvent.
 function parseFrame(frame: string): StreamEvent | null {
   let event = "message"
   const dataLines: string[] = []

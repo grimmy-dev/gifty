@@ -2,6 +2,7 @@ import { GiftIcon } from "lucide-react"
 
 import { TabsList, TabsTrigger } from "@/components/ui/tabs"
 
+/** Page title, tagline, and the Recommend/Recent tab switch. */
 export function AppHeader() {
   return (
     <header className="flex animate-in flex-col items-center gap-6 text-center duration-500 fade-in slide-in-from-top-2">

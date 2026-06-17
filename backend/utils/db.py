@@ -51,6 +51,7 @@ def new_run_id() -> str:
 
 
 def _row_to_item(row: sqlite3.Row) -> dict:
+    """Map a DB row to an item dict, decoding the JSON `data` column."""
     return {
         "id": row["id"],
         "run_id": row["run_id"],
@@ -84,6 +85,8 @@ def get_item(item_id: str) -> dict | None:
 def update_item(
     item_id: str, *, status: str | None = None, data: dict | None = None
 ) -> None:
+    """Update status and/or data for one item; no-op if neither is given."""
+    # Build the SET clause from only the provided fields so callers can patch either.
     sets, args = [], []
     if status is not None:
         sets.append("status=?")

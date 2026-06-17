@@ -42,6 +42,7 @@ function sortedGifts(rec: Recommendation) {
   return [...rec.recommended_gifts].sort((a, b) => a.rank - b.rank)
 }
 
+// Trigger a client-side file download by clicking a temporary blob-URL anchor.
 function downloadJSON(rec: Recommendation) {
   const blob = new Blob([JSON.stringify(rec, null, 2)], {
     type: "application/json",
@@ -51,7 +52,7 @@ function downloadJSON(rec: Recommendation) {
   a.href = url
   a.download = `gifty-${rec.contact_name.replace(/\s+/g, "-").toLowerCase()}.json`
   a.click()
-  URL.revokeObjectURL(url)
+  URL.revokeObjectURL(url) // Release the object URL once the download has started.
 }
 
 interface RecommendationCardProps {
@@ -61,6 +62,11 @@ interface RecommendationCardProps {
   onRerun?: (run: ContactRun, feedback: string) => void
 }
 
+/**
+ * One contact's result card: collapsible gift list with accept/reject/rerun.
+ * memo'd because the parent re-renders on every stream frame; most cards are
+ * unaffected and skip re-rendering when their `run` reference is unchanged.
+ */
 export const RecommendationCard = React.memo(function RecommendationCard({
   run,
   readOnly = false,

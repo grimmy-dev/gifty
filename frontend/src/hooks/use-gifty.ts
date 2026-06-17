@@ -77,6 +77,10 @@ function recOf(data: ResultData): Recommendation {
   return rec
 }
 
+/**
+ * Drives a batch run: streams contacts in, tracks per-contact state, and exposes
+ * review/rerun actions. Owns the SSE connection and the scrolling progress log.
+ */
 export function useGifty() {
   const [runs, setRuns] = React.useState<ContactRun[]>([])
   const [log, setLog] = React.useState<StreamLine[]>([])
@@ -84,9 +88,11 @@ export function useGifty() {
   const [isStreaming, setIsStreaming] = React.useState(false)
   const [error, setError] = React.useState<string | null>(null)
 
+  // Lets a new run (or unmount) cancel the in-flight stream; see recommend/clear.
   const abortRef = React.useRef<AbortController | null>(null)
-  const lineId = React.useRef(0)
+  const lineId = React.useRef(0) // Monotonic key for log lines.
 
+  // Append a log line, trimming the oldest so the buffer stays bounded.
   const pushLine = React.useCallback(
     (line: Omit<StreamLine, "id">) =>
       setLog((prev) => {
@@ -116,6 +122,7 @@ export function useGifty() {
         return
       }
 
+      // Cancel any previous stream, then track this one's controller.
       abortRef.current?.abort()
       const ctrl = new AbortController()
       abortRef.current = ctrl
@@ -127,6 +134,7 @@ export function useGifty() {
       setIsStreaming(true)
 
       try {
+        // Each SSE frame advances one contact's state; dispatch by event type.
         for await (const ev of streamRuns(req, ctrl.signal)) {
           if (ev.event === "start") {
             setRunId(ev.data.run_id)
@@ -175,6 +183,7 @@ export function useGifty() {
           }
         }
       } catch (e) {
+        // A deliberate abort throws too; only surface real failures.
         if (!ctrl.signal.aborted) {
           setError(errMsg(e, "Stream failed."))
         }
@@ -254,8 +263,10 @@ export function useGifty() {
     setIsStreaming(false)
   }, [])
 
+  // Abort the stream if the component unmounts mid-run.
   React.useEffect(() => () => abortRef.current?.abort(), [])
 
+  // Derived view state the UI switches on: nothing yet, running, or done.
   const phase = isStreaming ? "streaming" : runs.length > 0 ? "results" : "idle"
 
   return {

@@ -85,10 +85,11 @@ def broaden_queries(state: GraphState) -> dict:
 
 def search(state: GraphState) -> dict:
     """Run each query and collect de-duplicated product candidates."""
-    seen: set[str] = set()
+    seen: set[str] = set()  # URLs already kept, so queries can't yield duplicates.
     candidates: list[Product] = []
     for q in state["queries"]:
         for p in search_client.search(q):
+            # Keep first sighting of each real product URL; drop social/aggregator hosts.
             if p.url and p.url not in seen and not is_junk(p.url):
                 seen.add(p.url)
                 candidates.append(p)
@@ -116,7 +117,9 @@ async def validate_products(state: GraphState) -> dict:
             except httpx.HTTPError:
                 return None
 
+        # Check every link in parallel; gather preserves input order.
         checked = await asyncio.gather(*(alive(p) for p in candidates))
+    # Drop the None (dead/unsafe) entries and cap the LLM input at 20 products.
     live = [p for p in checked if p][:20]
     if not live:
         return with_log(
@@ -128,6 +131,7 @@ async def validate_products(state: GraphState) -> dict:
     out, log = await asyncio.to_thread(
         llm.generate, "fast", VALIDATE_SYS, user, Validation, 3000
     )
+    # Index the model's verdicts by URL so we can match them back to live products.
     judged = {v.url: v for v in out.products}
     kept = [
         Product(

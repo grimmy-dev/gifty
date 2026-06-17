@@ -1,3 +1,4 @@
+// App entry: mount React into #root, wrapped in the theme provider.
 import { StrictMode } from "react"
 import { createRoot } from "react-dom/client"
 

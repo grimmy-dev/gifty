@@ -31,6 +31,7 @@ function formatDate(ts: string): string {
       })
 }
 
+// One collapsible run; its items load lazily the first time it is expanded.
 function BatchGroup({
   runId,
   createdAt,
@@ -47,6 +48,7 @@ function BatchGroup({
   return (
     <Collapsible
       className="rounded-xl ring-1 ring-foreground/10"
+      // Fetch this run's detail only on first open, not up front.
       onOpenChange={(open) => open && onOpen()}
     >
       <CollapsibleTrigger className="group flex w-full items-center gap-3 px-4 py-3 text-left">

@@ -1,3 +1,4 @@
+// Presentational gift cards: GiftPrimary (rank 1) and GiftMini (alternates).
 import * as React from "react"
 import { ExternalLinkIcon, QuoteIcon } from "lucide-react"
 
@@ -15,6 +16,7 @@ import { CopyButton } from "@/components/gifty/copy-button"
 
 const badgeSize = "h-6 px-2.5 text-[0.8rem]"
 
+// Shared badge row: price, store, risk, and confidence, colour-coded by value.
 function GiftMeta({ gift }: { gift: RecommendedGift }) {
   return (
     <div className="flex flex-wrap items-center gap-2">

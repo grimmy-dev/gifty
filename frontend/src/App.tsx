@@ -13,8 +13,10 @@ import { RecentPanel } from "@/components/gifty/recent-panel"
 import { RecommendationCard } from "@/components/gifty/recommendation-card"
 import { StreamLog } from "@/components/gifty/stream-log"
 
+// Root: minimal path-based routing between the detail page and the main view.
 export function App() {
   const path = useRoute()
+  // /recommendation/:id renders the standalone detail page; everything else is main.
   const detail = path.match(/^\/recommendation\/([^/]+)$/)
   if (detail) return <DetailPage key={detail[1]} itemId={detail[1]} />
 
@@ -27,6 +29,7 @@ function MainView() {
   const gifty = useGifty()
   const { phase, runs, log, runId, isStreaming, error, review, rerun } = gifty
 
+  // Shrink the input panel once a run has started so results get the space.
   const compact = phase !== "idle"
 
   return (

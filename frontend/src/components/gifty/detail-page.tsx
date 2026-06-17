@@ -1,3 +1,4 @@
+// Standalone /recommendation/:id page: full gift fields plus the saved trace.
 import * as React from "react"
 import { ArrowLeftIcon, ExternalLinkIcon, Loader2Icon } from "lucide-react"
 
@@ -17,6 +18,7 @@ import { Button } from "@/components/ui/button"
 import { Separator } from "@/components/ui/separator"
 import { CopyButton } from "@/components/gifty/copy-button"
 
+// Narrow an unknown trace value to a number, since trace entries are loosely typed.
 function num(value: unknown): number | undefined {
   return typeof value === "number" ? value : undefined
 }
@@ -162,6 +164,7 @@ export function DetailPage({ itemId }: { itemId: string }) {
   const [error, setError] = React.useState<string | null>(null)
 
   React.useEffect(() => {
+    // `active` guards against a setState after unmount if the fetch resolves late.
     let active = true
     getItem(itemId)
       .then((res) => active && setItem(res))
@@ -206,6 +209,7 @@ function DetailBody({ item }: { item: RunItem }) {
   const signals = data.profile_signals
   const search = data.search_trace
   const trace = data.trace ?? []
+  // Sum each node's latency for the pipeline header total.
   const totalMs = trace.reduce((sum, e) => sum + (num(e.ms) ?? 0), 0)
   const note = data.human_review?.note
 
