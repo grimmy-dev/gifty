@@ -1,0 +1,74 @@
+{
+  "user_id": "demo",
+  "contacts": [
+    {
+      "name": "Aarav Mehta",
+      "role": "VP Sales",
+      "company": "Acme Corp",
+      "location": "Bengaluru, India",
+      "linkedin_profile": {
+        "headline": "VP Sales at Acme Corp | Enterprise SaaS | GTM Leadership",
+        "about": "I enjoy building high-performing revenue teams and scaling SaaS businesses across India and Southeast Asia.",
+        "experience": [
+          {"title": "VP Sales", "company": "Acme Corp", "description": "Leading enterprise sales, strategic accounts, and GTM expansion."},
+          {"title": "Regional Sales Director", "company": "Salesforce", "description": "Managed enterprise accounts across BFSI and retail."}
+        ],
+        "recent_posts": [
+          "Great sales teams are built on trust, coaching, and consistency.",
+          "India's SaaS ecosystem is entering an exciting new phase.",
+          "Still recovering from yesterday's India vs Australia match. What a game!"
+        ],
+        "recent_comments": [
+          "Completely agree — pipeline discipline matters more than heroic end-of-quarter selling.",
+          "Cricket teaches leadership better than most management books."
+        ],
+        "engaged_topics": ["Cricket", "Revenue leadership", "SaaS GTM", "Customer-led growth", "Team building"]
+      },
+      "relationship_context": {
+        "relationship_type": "Prospective customer",
+        "last_interaction": "Positive discovery call last week",
+        "business_goal": "Nurture relationship before follow-up meeting"
+      },
+      "gift_context": {
+        "occasion": "Post-meeting thank you",
+        "budget_min": 3000,
+        "budget_max": 5000,
+        "currency": "INR",
+        "country": "India"
+      }
+    },
+    {
+      "name": "Elena Rossi",
+      "role": "Head of Design",
+      "company": "Northwind Studio",
+      "location": "Berlin, Germany",
+      "linkedin_profile": {
+        "headline": "Head of Design at Northwind | Product & Brand | Specialty Coffee nerd",
+        "about": "I lead design teams building thoughtful products. Outside work I'm into pour-over coffee and trail running.",
+        "experience": [
+          {"title": "Head of Design", "company": "Northwind Studio", "description": "Leading product and brand design."}
+        ],
+        "recent_posts": [
+          "Spent the weekend dialing in a new Ethiopian single-origin. Bloom timing matters.",
+          "Good design is invisible. Great design is inevitable."
+        ],
+        "recent_comments": [
+          "Trail running resets my head better than any productivity hack."
+        ],
+        "engaged_topics": ["Specialty coffee", "Product design", "Trail running", "Typography"]
+      },
+      "relationship_context": {
+        "relationship_type": "Existing partner",
+        "last_interaction": "Wrapped a successful collaboration last month",
+        "business_goal": "Strengthen long-term partnership"
+      },
+      "gift_context": {
+        "occasion": "Thank you for the collaboration",
+        "budget_min": 40,
+        "budget_max": 80,
+        "currency": "EUR",
+        "country": "Germany"
+      }
+    }
+  ]
+}
