@@ -1,5 +1,6 @@
 {
   "enabledPlugins": {
-    "andrej-karpathy-skills@karpathy-skills": true
+    "andrej-karpathy-skills@karpathy-skills": true,
+    "agent-skills@addy-agent-skills": true
   }
 }
