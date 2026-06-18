@@ -51,7 +51,7 @@ free_port() {
 run_backend() {
   free_port 8000
   echo "==> backend: http://localhost:8000 (docs at /docs)"
-  (cd "$BACKEND" && exec uv run uvicorn app:app --reload --port 8000)
+  (cd "$BACKEND" && exec uv run uvicorn app:app --port 8000)
 }
 
 run_frontend() {
