@@ -15,7 +15,13 @@ from pydantic import ValidationError
 from analyze import SIGNALS_TO_AVOID, ContactAnalysis, scrub, to_signals
 from graph.build import route_after_validate
 from graph.retrieval import is_junk, is_safe_url
-from utils.models import GiftContext, RecommendedGift, RunRequest
+from utils.models import (
+    GiftContext,
+    RecommendedGift,
+    RunRequest,
+    compact_of,
+    usage_of,
+)
 
 
 # ---------- Guardrails: sensitive-signal filtering ----------
@@ -225,3 +231,72 @@ def test_route_recommends_when_enough_validated():
 def test_route_recommends_after_one_retry_even_if_still_few():
     # The retry flag prevents an infinite broaden/search loop.
     assert route_after_validate({"validated": [], "retried": True}) == "recommend"
+
+
+# ---------- Payload shaping: compact cards + usage rollup ----------
+
+
+def full_item(**overrides) -> dict:
+    """A persisted item payload with two ranked gifts plus trace/inputs."""
+    base = {
+        "contact_name": "Aarav",
+        "profile_signals": {"strong_signals": ["cricket"]},
+        "search_trace": {"queries_used": ["q"], "products_considered_count": 5},
+        "ranking_reason": "best fit first",
+        "recommended_gifts": [
+            gift(rank=1, personalised_message="m1", assumptions=["a1"]),
+            gift(rank=2, personalised_message="m2", assumptions=["a2"]),
+        ],
+        "human_review": {"status": "pending_review"},
+        "trace": [
+            {"node": "search", "results": 5},
+            {"node": "validate_products", "model": "haiku", "ms": 100,
+             "tokens_in": 10, "tokens_out": 20},
+            {"node": "recommend", "model": "sonnet", "ms": 200,
+             "tokens_in": 30, "tokens_out": 40},
+        ],
+        "inputs": {"contact": {}, "signals": {}, "queries": []},
+    }
+    return {**base, **overrides}
+
+
+def test_compact_of_drops_inputs_and_trace():
+    out = compact_of(full_item())
+    assert "inputs" not in out
+    assert "trace" not in out
+
+
+def test_compact_of_keeps_top_pick_detail_but_trims_alternates():
+    gifts = compact_of(full_item())["recommended_gifts"]
+    rank1, rank2 = gifts[0], gifts[1]
+    # Rank 1 keeps the heavy fields for the card's top pick.
+    assert rank1["personalised_message"] == "m1"
+    assert rank1["assumptions"] == ["a1"]
+    # Ranks 2-3 drop message/reasoning/assumptions to stay light.
+    assert "personalised_message" not in rank2
+    assert "personalisation_reasoning" not in rank2
+    assert "assumptions" not in rank2
+
+
+def test_compact_of_passes_failed_items_through():
+    out = compact_of({"contact_name": "X", "error": "boom"})
+    assert out == {"contact_name": "X", "error": "boom"}
+
+
+def test_usage_of_groups_by_model_with_totals():
+    usage = usage_of(full_item()["trace"])
+    by_model = {m["model"]: m for m in usage["by_model"]}
+    # search/no-op nodes carry no model and are skipped.
+    assert set(by_model) == {"haiku", "sonnet"}
+    assert by_model["haiku"]["calls"] == 1
+    totals = usage["totals"]
+    assert totals["calls"] == 2
+    assert totals["tokens_in"] == 40
+    assert totals["tokens_out"] == 60
+    assert totals["ms"] == 300
+
+
+def test_usage_of_empty_trace():
+    usage = usage_of([])
+    assert usage["by_model"] == []
+    assert usage["totals"]["calls"] == 0

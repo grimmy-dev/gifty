@@ -11,13 +11,16 @@ Built with **Vite + React + TypeScript**, **Tailwind CSS v4**, and **shadcn/ui**
 ## Features
 
 - **Flexible input** - paste JSON, upload a `.json` file, or load bundled sample data.
-- **Live streaming** - Server-Sent Events drive a node-by-node progress log as the backend works.
+- **Live roadmap** - Server-Sent Events drive a two-level progress roadmap (collapsible phase rows
+  with their sub-steps) and an elapsed timer; a Stop button cancels the in-flight run, and a
+  10-minute watchdog aborts a hung one.
 - **Review actions** - accept, reject, or regenerate (with optional feedback) per contact; copy or
   download the final JSON.
 - **Recent runs** - a history tab lists past batches loaded from the backend.
 - **Detail route** - `/recommendation/:id` refetches an item and shows every gift as labelled
   key:value fields (price / confidence / risk colour-coded) plus the full trace: profile signals,
-  search queries and products-considered count, and per-node model / tokens / latency.
+  search queries and products-considered count, per-node model / tokens / latency, and a per-model
+  usage rollup.
 - **Light / dark theme** - press `d` to toggle.
 
 ---
@@ -84,7 +87,7 @@ src/
   App.tsx                  routes between the main view and the detail page
   main.tsx                 app entry + theme provider
   components/
-    gifty/                 app components (input, stream log, recommendation card, detail page, …)
+    gifty/                 app components (input, roadmap, recommendation card, detail page, …)
     ui/                    shadcn/ui primitives
     theme-provider.tsx     light/dark theme + `d` keyboard toggle
   hooks/

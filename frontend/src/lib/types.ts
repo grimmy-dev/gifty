@@ -88,7 +88,47 @@ export interface Recommendation {
   profile_signals: ProfileSignals
   search_trace: SearchTrace
   recommended_gifts: RecommendedGift[]
+  ranking_reason: string
   human_review: HumanReview
+}
+
+// Card-sized gift: detail fields present only on the top pick (rank 1).
+export interface CompactGift {
+  rank: number
+  gift_name: string
+  product_url: string
+  store: string
+  estimated_price: string
+  why_this_gift: string
+  confidence_score: number
+  risk_level: RiskLevel
+  personalisation_reasoning?: string | null
+  personalised_message?: string | null
+  assumptions?: string[]
+}
+
+// Result schema shipped to cards: no inputs/trace, gifts trimmed to CompactGift.
+export interface CompactRecommendation {
+  contact_name: string
+  profile_signals: ProfileSignals
+  search_trace: SearchTrace
+  recommended_gifts: CompactGift[]
+  ranking_reason: string
+  human_review: HumanReview
+}
+
+// Per-model token/latency rollup shown on the detail page.
+export interface ModelUsage {
+  model: string
+  calls: number
+  tokens_in: number
+  tokens_out: number
+  ms: number
+}
+
+export interface Usage {
+  by_model: ModelUsage[]
+  totals: ModelUsage
 }
 
 // One persisted contact recommendation (an item within a batch run).
@@ -105,10 +145,25 @@ export interface RunItem {
   }
 }
 
-export interface BatchRun {
+// Full item plus the derived per-model usage rollup (detail page).
+export interface RunItemDetail extends RunItem {
+  usage: Usage
+}
+
+// One persisted item with its result compacted for card rendering.
+export interface CompactItem {
+  id: string
+  run_id: string
+  contact_name: string
+  status: ReviewStatus
+  created_at: string
+  data: CompactRecommendation & { error?: string }
+}
+
+export interface CompactBatchRun {
   run_id: string
   created_at: string
-  items: RunItem[]
+  items: CompactItem[]
 }
 
 export interface ContactStatus {
@@ -134,8 +189,8 @@ export type StreamEvent =
   | { event: "start"; data: { run_id: string; contacts: string[] } }
   | { event: "analyze"; data: { run_id: string; contacts: string[] } }
   | {
-      event: "node"
-      data: { contact_name: string; node: string; log: TraceEntry }
+      event: "step"
+      data: { contact_name: string; phase: string; detail: string }
     }
   | {
       event: "result"
@@ -144,6 +199,6 @@ export type StreamEvent =
         item_id: string
         contact_name: string
         status: ReviewStatus
-      } & Recommendation & { trace?: TraceEntry[] }
+      } & CompactRecommendation
     }
   | { event: "error"; data: { contact_name: string; error: string } }

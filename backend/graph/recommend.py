@@ -2,7 +2,7 @@
 
 from pydantic import BaseModel
 
-from graph.state import GraphState, with_log
+from graph.state import GraphState, step, with_log
 from llm.client import llm
 from utils.models import RecommendedGift
 from utils.prompts import RECOMMEND_SYS, contact_summary
@@ -10,6 +10,7 @@ from utils.prompts import RECOMMEND_SYS, contact_summary
 
 class RecommendOut(BaseModel):
     gifts: list[RecommendedGift]
+    ranking_reason: str = ""  # One-line rationale for the chosen ranking order.
 
 
 def recommend(state: GraphState) -> dict:
@@ -18,6 +19,12 @@ def recommend(state: GraphState) -> dict:
     # Nothing survived validation: skip the LLM call and let the API flag for review.
     if not validated:
         return with_log(state, "recommend", {"count": 0}, ranked=[])
+    step("recommend", f"reading the curated candidates for {c.name}", c.name)
+    step(
+        "recommend",
+        f"weighing {len(validated)} options on fit, budget, professionalism",
+        c.name,
+    )
     # One line per candidate so the model ranks only from real, checked products.
     listing = "\n".join(
         f"- {p.title} | {p.url} | price={p.price} | store={p.store}" for p in validated
@@ -35,4 +42,7 @@ def recommend(state: GraphState) -> dict:
     )
     # Smart tier does the ranking + note writing; cap at 3 even if it returns more.
     out, log = llm.generate("smart", RECOMMEND_SYS, user, RecommendOut, max_tokens=3000)
-    return with_log(state, "recommend", log, ranked=out.gifts[:3])
+    step("recommend", f"ranked — {out.ranking_reason}", c.name)
+    return with_log(
+        state, "recommend", log, ranked=out.gifts[:3], ranking_reason=out.ranking_reason
+    )

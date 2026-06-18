@@ -1,5 +1,5 @@
 import * as React from "react"
-import { AlertCircleIcon, Trash2Icon, XIcon } from "lucide-react"
+import { AlertCircleIcon, CircleStopIcon, Trash2Icon, XIcon } from "lucide-react"
 
 import { useGifty } from "@/hooks/use-gifty"
 import { useRoute } from "@/hooks/use-route"
@@ -11,7 +11,7 @@ import { DetailPage } from "@/components/gifty/detail-page"
 import { InputPanel } from "@/components/gifty/input-panel"
 import { RecentPanel } from "@/components/gifty/recent-panel"
 import { RecommendationCard } from "@/components/gifty/recommendation-card"
-import { StreamLog } from "@/components/gifty/stream-log"
+import { Roadmap } from "@/components/gifty/roadmap"
 
 // Root: minimal path-based routing between the detail page and the main view.
 export function App() {
@@ -27,7 +27,17 @@ function MainView() {
   const [mode, setMode] = React.useState("post")
   const [input, setInput] = React.useState("")
   const gifty = useGifty()
-  const { phase, runs, log, runId, isStreaming, error, review, rerun } = gifty
+  const {
+    phase,
+    runs,
+    roadmap,
+    runId,
+    startedAt,
+    isStreaming,
+    error,
+    review,
+    rerun,
+  } = gifty
 
   // Shrink the input panel once a run has started so results get the space.
   const compact = phase !== "idle"
@@ -44,7 +54,10 @@ function MainView() {
         <InputPanel
           value={input}
           onChange={setInput}
-          onRecommend={() => gifty.recommend(input)}
+          onRecommend={() => {
+            gifty.recommend(input)
+            setInput("")
+          }}
           onUseSample={() => setInput(SAMPLE_JSON)}
           busy={isStreaming}
           compact={compact}
@@ -67,7 +80,7 @@ function MainView() {
           </div>
         )}
 
-        {(log.length > 0 || runs.length > 0) && (
+        {(roadmap.length > 0 || runs.length > 0) && (
           <div className="flex items-center justify-between">
             <div className="flex flex-col gap-0.5">
               <h2 className="font-heading text-lg font-semibold">
@@ -79,20 +92,34 @@ function MainView() {
                 </span>
               )}
             </div>
-            <Button
-              variant="ghost"
-              onClick={() => {
-                gifty.clear()
-                setInput("")
-              }}
-            >
-              <Trash2Icon />
-              Clear
-            </Button>
+            <div className="flex items-center gap-2">
+              {isStreaming && (
+                <Button variant="outline" onClick={() => gifty.cancel()}>
+                  <CircleStopIcon />
+                  Stop
+                </Button>
+              )}
+              <Button
+                variant="ghost"
+                onClick={() => {
+                  gifty.clear()
+                  setInput("")
+                }}
+              >
+                <Trash2Icon />
+                Clear
+              </Button>
+            </div>
           </div>
         )}
 
-        {log.length > 0 && <StreamLog lines={log} active={isStreaming} />}
+        {roadmap.length > 0 && (
+          <Roadmap
+            phases={roadmap}
+            active={isStreaming}
+            startedAt={startedAt}
+          />
+        )}
 
         {runs.length > 0 && (
           <section className="flex flex-col gap-6" aria-label="Recommendations">

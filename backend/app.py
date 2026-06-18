@@ -7,7 +7,6 @@ per-contact review under `/recommendations/{item_id}`.
 
 import asyncio
 import json
-import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException
@@ -28,10 +27,11 @@ from utils.db import (
     update_item,
 )
 from utils.errors import register_handlers
+from utils.logging import request_logger, setup_logging
 from utils.models import (
     APIError,
-    BatchRun,
     BatchSummary,
+    CompactBatchRun,
     Contact,
     CreateRunsResponse,
     HumanReview,
@@ -41,15 +41,31 @@ from utils.models import (
     RegenerateRequest,
     ReviewRequest,
     RunItem,
+    RunItemDetail,
     RunRequest,
     SearchTrace,
+    compact_of,
+    usage_of,
 )
 
-logging.basicConfig(level=logging.INFO)
+log = request_logger()
+
+
+def lifecycle(message: str, *, run_id: str = "-", contact: str = "-") -> None:
+    """Emit one lifecycle line on the quiet console + detailed file log."""
+    log.info(message, extra={"runctx": f"{run_id}·{contact}"})
+
+
+def run_error(exc: Exception) -> str:
+    """Human reason for a failed run; a bare TimeoutError has no message."""
+    if isinstance(exc, TimeoutError):
+        return f"run timed out after {settings.run_timeout:.0f}s"
+    return str(exc)
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    setup_logging()
     init_db()
     yield
 
@@ -92,6 +108,7 @@ def assemble(contact: Contact, state: GraphState) -> Recommendation:
             products_considered_count=len(state.get("candidates", [])),
         ),
         recommended_gifts=gifts,
+        ranking_reason=state.get("ranking_reason", ""),
         human_review=review,
     )
 
@@ -116,25 +133,32 @@ async def run_contact(
 ) -> ItemSummary:
     """Run one contact through the graph and persist into the batch; isolate failures."""
     try:
-        state = await graph.ainvoke(
-            {"contact": contact, "signals": signals, "queries": queries}
-        )
+        async with asyncio.timeout(settings.run_timeout):
+            state = await graph.ainvoke(
+                {"contact": contact, "signals": signals, "queries": queries}
+            )
         data = build_run_data(contact, signals, queries, state)
         item_id = await asyncio.to_thread(create_item, run_id, contact.name, data)
         return ItemSummary(
             item_id=item_id, contact_name=contact.name, status="pending_review"
         )
     except Exception as exc:
-        logging.exception("contact %s failed", contact.name)
+        reason = run_error(exc)
+        log.debug("contact %s failed", contact.name, exc_info=True)
+        lifecycle(
+            f"failed: {reason} — see logs: {settings.log_path}",
+            run_id=run_id,
+            contact=contact.name,
+        )
         item_id = await asyncio.to_thread(
             create_item,
             run_id,
             contact.name,
-            {"contact_name": contact.name, "error": str(exc)},
+            {"contact_name": contact.name, "error": reason},
             status="failed",
         )
         return ItemSummary(
-            item_id=item_id, contact_name=contact.name, status="failed", error=str(exc)
+            item_id=item_id, contact_name=contact.name, status="failed", error=reason
         )
 
 
@@ -175,7 +199,9 @@ def signals_and_queries(
 async def create_runs(req: RunRequest) -> CreateRunsResponse:
     """Batched analyze, then run each contact's pipeline concurrently in one batch run."""
     run_id = new_run_id()
+    lifecycle(f"received batch of {len(req.contacts)} contact(s)", run_id=run_id)
     analyses = await analyze_contacts(req.contacts)
+    lifecycle("processing contacts", run_id=run_id)
     sem = asyncio.Semaphore(settings.max_concurrency)
 
     async def guarded(
@@ -188,6 +214,7 @@ async def create_runs(req: RunRequest) -> CreateRunsResponse:
     items = await asyncio.gather(
         *(guarded(c, a) for c, a in zip(req.contacts, analyses))
     )
+    lifecycle(f"completed batch of {len(items)} contact(s)", run_id=run_id)
     return CreateRunsResponse(run_id=run_id, items=list(items))
 
 
@@ -197,12 +224,14 @@ def list_runs(limit: int = 20) -> list[dict]:
     return list_batches(min(max(limit, 1), 100))
 
 
-@app.get("/runs/{run_id}", response_model=BatchRun)
+@app.get("/runs/{run_id}", response_model=CompactBatchRun)
 def read_run(run_id: str) -> dict:
-    """All contact items belonging to one batch run."""
+    """All contact items belonging to one batch run, with card-sized results."""
     items = get_batch(run_id)
     if not items:
         raise HTTPException(status_code=404, detail="run not found")
+    for item in items:
+        item["data"] = compact_of(item["data"])
     return {"run_id": run_id, "created_at": items[0]["created_at"], "items": items}
 
 
@@ -239,9 +268,12 @@ async def load_regen_inputs(item_id: str) -> tuple[Contact, ProfileSignals, dict
     )
 
 
-@app.get("/recommendations/{item_id}", response_model=RunItem)
+@app.get("/recommendations/{item_id}", response_model=RunItemDetail)
 def read_item(item_id: str) -> dict:
-    return _load(item_id)
+    """Full item (result + trace + inputs) plus the derived per-model usage."""
+    item = _load(item_id)
+    item["usage"] = usage_of(item["data"].get("trace", []))
+    return item
 
 
 @app.post("/recommendations/{item_id}/approve", response_model=RunItem)
@@ -265,17 +297,20 @@ def reject_item(item_id: str, req: ReviewRequest) -> dict:
 @app.post("/recommendations/{item_id}/regenerate", response_model=RunItem)
 async def regenerate_item(item_id: str, req: RegenerateRequest) -> dict:
     """Re-run the pipeline for a contact, steered by optional reviewer feedback."""
-    contact, signals, inputs, _ = await load_regen_inputs(item_id)
-    state = await graph.ainvoke(
-        {
-            "contact": contact,
-            "signals": signals,
-            "queries": inputs["queries"],
-            "review_feedback": req.feedback or None,
-        }
-    )
+    contact, signals, inputs, run_id = await load_regen_inputs(item_id)
+    lifecycle("received regenerate", run_id=run_id, contact=contact.name)
+    async with asyncio.timeout(settings.run_timeout):
+        state = await graph.ainvoke(
+            {
+                "contact": contact,
+                "signals": signals,
+                "queries": inputs["queries"],
+                "review_feedback": req.feedback or None,
+            }
+        )
     data = build_run_data(contact, signals, inputs["queries"], state)
     await asyncio.to_thread(update_item, item_id, status="pending_review", data=data)
+    lifecycle("completed regenerate", run_id=run_id, contact=contact.name)
     return await asyncio.to_thread(get_item, item_id)
 
 
@@ -293,7 +328,7 @@ async def stream_run(
     item_id: str | None = None,
     feedback: str | None = None,
 ):
-    """Stream a contact's graph run as SSE: one `node` event per node, then `result`.
+    """Stream a contact's graph run as SSE: one `step` event per work step, then `result`.
 
     Persists at the end (create within the batch on a fresh run, update when
     regenerating) so the streamed run is reviewable exactly like a non-streamed one.
@@ -303,23 +338,23 @@ async def stream_run(
         init["review_feedback"] = feedback
     final_state: GraphState = {}
     try:
-        async for mode, chunk in graph.astream(init, stream_mode=["updates", "values"]):
-            if mode == "updates":
-                for node, update in chunk.items():
-                    logs = (update or {}).get("logs") or []
-                    yield sse(
-                        "node",
-                        {
-                            "contact_name": contact.name,
-                            "node": node,
-                            "log": logs[-1] if logs else {},
-                        },
-                    )
-            else:
-                final_state = chunk
+        async with asyncio.timeout(settings.run_timeout):
+            async for mode, chunk in graph.astream(
+                init, stream_mode=["custom", "values"]
+            ):
+                if mode == "custom":
+                    yield sse("step", chunk)
+                else:
+                    final_state = chunk
     except Exception as exc:
-        logging.exception("stream for %s failed", contact.name)
-        yield sse("error", {"contact_name": contact.name, "error": str(exc)})
+        reason = run_error(exc)
+        log.debug("stream for %s failed", contact.name, exc_info=True)
+        lifecycle(
+            f"failed: {reason} — see logs: {settings.log_path}",
+            run_id=run_id,
+            contact=contact.name,
+        )
+        yield sse("error", {"contact_name": contact.name, "error": reason})
         return
 
     data = build_run_data(contact, signals, queries, final_state)
@@ -336,7 +371,7 @@ async def stream_run(
             "item_id": item_id,
             "contact_name": contact.name,
             "status": "pending_review",
-            **data,
+            **compact_of(data),
         },
     )
 
@@ -352,14 +387,18 @@ async def create_runs_stream(req: RunRequest) -> StreamingResponse:
     contacts = req.contacts
     run_id = new_run_id()
 
+    lifecycle(f"received batch of {len(contacts)} contact(s)", run_id=run_id)
+
     async def gen():
         yield sse("start", {"run_id": run_id, "contacts": [c.name for c in contacts]})
         analyses = await analyze_contacts(contacts)
+        lifecycle("processing contacts", run_id=run_id)
         yield sse("analyze", {"run_id": run_id, "contacts": [c.name for c in contacts]})
         for contact, analysis in zip(contacts, analyses):
             signals, queries = signals_and_queries(analysis)
             async for ev in stream_run(run_id, contact, signals, queries):
                 yield ev
+        lifecycle(f"completed batch of {len(contacts)} contact(s)", run_id=run_id)
 
     return StreamingResponse(gen(), media_type="text/event-stream")
 
@@ -370,6 +409,7 @@ async def regenerate_item_stream(
 ) -> StreamingResponse:
     """Re-run a contact from stored inputs with live SSE progress, steered by feedback."""
     contact, signals, inputs, run_id = await load_regen_inputs(item_id)
+    lifecycle("received regenerate", run_id=run_id, contact=contact.name)
 
     async def gen():
         yield sse(
@@ -385,5 +425,6 @@ async def regenerate_item_stream(
             feedback=req.feedback or None,
         ):
             yield ev
+        lifecycle("completed regenerate", run_id=run_id, contact=contact.name)
 
     return StreamingResponse(gen(), media_type="text/event-stream")

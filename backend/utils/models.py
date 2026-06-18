@@ -144,6 +144,7 @@ class Recommendation(BaseModel):
     profile_signals: ProfileSignals
     search_trace: SearchTrace
     recommended_gifts: list[RecommendedGift] = []
+    ranking_reason: str = ""  # One-line rationale for the ranking order.
     human_review: HumanReview = HumanReview()
 
 
@@ -195,6 +196,80 @@ class BatchRun(BaseModel):
     items: list[RunItem]
 
 
+# ---------- Compact payloads (cards) ----------
+
+
+class CompactGift(BaseModel):
+    """Card-sized gift: always shown fields, plus detail only on the top pick."""
+
+    rank: int
+    gift_name: str
+    product_url: str
+    store: str
+    estimated_price: str
+    why_this_gift: str
+    confidence_score: float
+    risk_level: RiskLevel
+    # Populated for rank 1 only; None/empty for ranks 2-3 to keep cards light.
+    personalisation_reasoning: str | None = None
+    personalised_message: str | None = None
+    assumptions: list[str] = []
+
+
+class CompactRecommendation(BaseModel):
+    """Result schema without `inputs`/`trace`, with trimmed gifts."""
+
+    contact_name: str
+    profile_signals: ProfileSignals = ProfileSignals()
+    search_trace: SearchTrace = SearchTrace()
+    recommended_gifts: list[CompactGift] = []
+    ranking_reason: str = ""
+    human_review: HumanReview = HumanReview()
+
+
+class CompactItem(BaseModel):
+    """A persisted item with its result compacted for card rendering."""
+
+    id: str
+    run_id: str
+    contact_name: str
+    status: ReviewStatus
+    created_at: str
+    data: dict[str, Any]  # compact result, or {contact_name, error} for failures
+
+
+class CompactBatchRun(BaseModel):
+    """A batch run whose items carry compact results only."""
+
+    run_id: str
+    created_at: str
+    items: list[CompactItem]
+
+
+# ---------- Usage (detail page) ----------
+
+
+class ModelUsage(BaseModel):
+    model: str
+    calls: int = 0
+    tokens_in: int = 0
+    tokens_out: int = 0
+    ms: int = 0
+
+
+class Usage(BaseModel):
+    """Per-model token/latency rollup plus run totals, derived from the trace."""
+
+    by_model: list[ModelUsage] = []
+    totals: ModelUsage = ModelUsage(model="total")
+
+
+class RunItemDetail(RunItem):
+    """Full item (result + trace + inputs) plus the derived usage rollup."""
+
+    usage: Usage = Usage()
+
+
 class ContactStatus(BaseModel):
     item_id: str
     contact_name: str
@@ -219,3 +294,51 @@ class APIError(BaseModel):
     """Single error envelope returned for every non-2xx response."""
 
     error: ErrorBody
+
+
+# ---------- Shape helpers ----------
+
+# Heavy per-gift fields stripped from ranks 2-3 on cards.
+_GIFT_DETAIL = ("personalisation_reasoning", "personalised_message", "assumptions")
+_DROP = ("inputs", "trace")
+
+
+def compact_of(data: dict) -> dict:
+    """Strip `inputs`/`trace` and trim ranks 2-3 to card-sized gifts.
+
+    Failed items (no `recommended_gifts`) are returned untouched except for the
+    dropped keys.
+    """
+    if "recommended_gifts" not in data:
+        return {k: v for k, v in data.items() if k not in _DROP}
+    gifts = []
+    for g in data["recommended_gifts"]:
+        compact = {k: v for k, v in g.items() if k not in _GIFT_DETAIL}
+        if g.get("rank") == 1:
+            compact.update({k: g.get(k) for k in _GIFT_DETAIL})
+        gifts.append(compact)
+    return {
+        k: v for k, v in data.items() if k not in _DROP
+    } | {"recommended_gifts": gifts}
+
+
+def usage_of(trace: list[dict]) -> dict:
+    """Roll up per-model calls/tokens/ms from the persisted trace, with totals."""
+    by_model: dict[str, dict] = {}
+    for entry in trace:
+        model = entry.get("model")
+        if not model:  # search/no-op nodes carry no model.
+            continue
+        agg = by_model.setdefault(
+            model,
+            {"model": model, "calls": 0, "tokens_in": 0, "tokens_out": 0, "ms": 0},
+        )
+        agg["calls"] += 1
+        for k in ("tokens_in", "tokens_out", "ms"):
+            agg[k] += entry.get(k, 0)
+    models = list(by_model.values())
+    totals = {"model": "total", "calls": 0, "tokens_in": 0, "tokens_out": 0, "ms": 0}
+    for m in models:
+        for k in ("calls", "tokens_in", "tokens_out", "ms"):
+            totals[k] += m[k]
+    return {"by_model": models, "totals": totals}

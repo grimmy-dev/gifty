@@ -19,7 +19,21 @@ class Settings(BaseSettings):
     claude_fast: str = "claude-haiku-4-5"
     claude_smart: str = "claude-sonnet-4-6"
     gemini_fast: str = "gemini-3.1-flash-lite"
-    gemini_smart: str = "gemini-3.5-flash"
+    # Typically choose higher model but due to free tier and quota i am just using fast model.
+    # gemini_smart: str = "gemini-3.5-flash" 
+    gemini_smart: str = "gemini-3.1-flash-lite"
+
+    # Verbose logging: mirror full file detail to the console when true.
+    debug: bool = False
+    log_path: str = "logs/gifty.log"
+
+    # Per-request LLM timeout (seconds). A hung provider call fails here and
+    # becomes retryable rather than blocking the run indefinitely.
+    llm_timeout: float = 60.0
+
+    # Hard ceiling for one contact's pipeline (seconds). A run hung past this is
+    # aborted so a stuck provider can't pin a contact forever. Default 10 min.
+    run_timeout: float = 600.0
 
     db_path: str = "gifty.db"
     search_max_results: int = 6

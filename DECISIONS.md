@@ -91,3 +91,40 @@ scope. Isolated behind `utils/db.py`, so Postgres later is a contained swap.
 
 A small `useRoute` hook over the History API handles the one extra route
 (`/recommendation/:id`). A router library is too much surface for two views.
+
+## Narrated process, not model reasoning
+
+The progress stream narrates the real pipeline: queries run, links checked and dropped,
+candidates weighed, and a one-line reason for the final order. It does not stream
+chain-of-thought. The calls use forced tool output, so there are no reasoning tokens, and
+a free tier rules out paying for extended thinking. Every streamed line maps to work that
+happened, which reads like reasoning without inventing any.
+
+## Live sub-steps via LangGraph's custom stream writer
+
+Nodes emit each sub-step through `get_stream_writer()`, drained over
+`stream_mode=["custom","values"]`. The alternative, atomic nodes plus a frontend replay
+of sub-steps after each node finishes, invents timing the backend never saw. One node per
+query was rejected too: it distorts the pipeline to buy granularity the writer already
+gives. A step appears when its query runs or its link is checked.
+
+## Two-tier read payloads; inputs stay server-side
+
+Cards get a compact shape (rank 1 full, alternates trimmed, no trace); the detail page
+gets everything plus usage. The stored graph `inputs` (signals, queries, prompt material)
+no longer reach the browser; they exist only to make regenerate self-contained. Sending
+the full row to a card was waste and a small leak of internal prompt data.
+
+## Usage derived from the trace, not a usage table
+
+Per-model call counts and token totals are computed from the trace already stored on each
+item (`GROUP BY model`), shown on the detail page. A usage table only pays off
+for cross-item SQL rollups, which aren't needed. The data is already persisted, so a
+read-time fold adds no schema or migration.
+
+## Two-channel logging behind one flag
+
+Detailed logs go to a rotating file (`logs/gifty.log`); the console shows only request
+lifecycle (received / processing / completed / failed, with a log pointer) and errors. A
+global `DEBUG` flag mirrors the full file detail to the terminal. Rotation caps the file
+so it neither grows unbounded nor disappears.

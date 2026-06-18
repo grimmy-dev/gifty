@@ -1,4 +1,4 @@
-import type { RecommendedGift, RiskLevel } from "@/lib/types"
+import type { CompactGift, RiskLevel } from "@/lib/types"
 
 // Contextual badge colors layered on the neutral theme (use with variant="outline").
 const GREEN =
@@ -23,7 +23,7 @@ export function confidenceBadgeClass(score: number): string {
 }
 
 /** Pretty-printed JSON for a single gift (used by the per-rank copy action). */
-export function giftJSON(gift: RecommendedGift): string {
+export function giftJSON(gift: CompactGift): string {
   return JSON.stringify(gift, null, 2)
 }
 

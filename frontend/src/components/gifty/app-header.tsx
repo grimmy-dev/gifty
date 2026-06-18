@@ -11,7 +11,7 @@ export function AppHeader() {
           <GiftIcon className="size-3.5 text-primary" />
           Gifty
         </span>
-        <h1 className="font-heading text-4xl font-bold sm:text-5xl">
+        <h1 className="font-heading text-4xl font-bold sm:text-5xl tracking-tight">
           Find the right gift for any contact
         </h1>
       </div>

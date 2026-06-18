@@ -36,7 +36,8 @@ RECOMMEND_SYS = (
     "BAD note: 'Hope you and the family love it!' (assumes family), or a generic 'Best wishes' "
     "(no personalisation).\n"
     "Lower confidence and state assumptions when signals are weak. Never invent products: use only "
-    "the given candidates and their exact URLs."
+    "the given candidates and their exact URLs.\n"
+    "Also return `ranking_reason`: one short line explaining why you ranked them in this order."
 )
 
 

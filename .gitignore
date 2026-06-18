@@ -15,6 +15,10 @@ backend/.venv/
 *.sqlite
 *.sqlite3
 
+# Logs
+logs/
+*/logs/
+
 # OS
 .DS_Store
 

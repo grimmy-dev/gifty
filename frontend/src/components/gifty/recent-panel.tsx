@@ -8,7 +8,7 @@ import {
 
 import { useRecent } from "@/hooks/use-recent"
 import { runFromItem } from "@/hooks/use-gifty"
-import type { RunItem } from "@/lib/types"
+import type { CompactItem } from "@/lib/types"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import {
@@ -42,7 +42,7 @@ function BatchGroup({
   runId: string
   createdAt: string
   count: number
-  items?: RunItem[]
+  items?: CompactItem[]
   onOpen: () => void
 }) {
   return (

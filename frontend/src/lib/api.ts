@@ -1,9 +1,10 @@
 // Typed client for the backend: plain JSON calls plus the SSE-over-POST streams.
 import type {
-  BatchRun,
   BatchSummary,
+  CompactBatchRun,
   Recommendation,
   RunItem,
+  RunItemDetail,
   RunRequest,
   StreamEvent,
 } from "@/lib/types"
@@ -54,9 +55,10 @@ async function getJSON<T>(path: string): Promise<T> {
 }
 
 export const getItem = (itemId: string) =>
-  getJSON<RunItem>(`/recommendations/${itemId}`)
+  getJSON<RunItemDetail>(`/recommendations/${itemId}`)
 
-export const getBatch = (runId: string) => getJSON<BatchRun>(`/runs/${runId}`)
+export const getBatch = (runId: string) =>
+  getJSON<CompactBatchRun>(`/runs/${runId}`)
 
 export const listBatches = (limit = 20) =>
   getJSON<BatchSummary[]>(`/runs?limit=${limit}`)

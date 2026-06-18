@@ -12,7 +12,7 @@ import {
 
 import type { ContactRun } from "@/hooks/use-gifty"
 import { navigate } from "@/hooks/use-route"
-import type { Recommendation, ReviewStatus } from "@/lib/types"
+import type { CompactRecommendation, ReviewStatus } from "@/lib/types"
 import { cn } from "@/lib/utils"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -38,12 +38,12 @@ const actionBadge: Record<
   failed: { label: "Failed", variant: "destructive" },
 }
 
-function sortedGifts(rec: Recommendation) {
+function sortedGifts(rec: CompactRecommendation) {
   return [...rec.recommended_gifts].sort((a, b) => a.rank - b.rank)
 }
 
 // Trigger a client-side file download by clicking a temporary blob-URL anchor.
-function downloadJSON(rec: Recommendation) {
+function downloadJSON(rec: CompactRecommendation) {
   const blob = new Blob([JSON.stringify(rec, null, 2)], {
     type: "application/json",
   })
@@ -105,7 +105,7 @@ export const RecommendationCard = React.memo(function RecommendationCard({
   const chosen = run.action ? actionBadge[run.action] : null
 
   // Reflect the chosen review outcome in exported JSON (not the stale pending_review).
-  const exportRec: Recommendation = run.action
+  const exportRec: CompactRecommendation = run.action
     ? { ...rec, human_review: { ...rec.human_review, status: run.action } }
     : rec
   const exportJSON = JSON.stringify(exportRec, null, 2)
@@ -169,6 +169,11 @@ export const RecommendationCard = React.memo(function RecommendationCard({
             {note && (
               <p className="rounded-lg bg-muted/60 px-4 py-3 text-sm text-muted-foreground">
                 {note}
+              </p>
+            )}
+            {rec.ranking_reason && (
+              <p className="text-sm text-muted-foreground italic">
+                {rec.ranking_reason}
               </p>
             )}
             {primary && (

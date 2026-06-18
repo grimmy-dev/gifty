@@ -9,9 +9,10 @@ import {
 import { parseRunRequest } from "@/lib/sample"
 import { errMsg } from "@/lib/utils"
 import type {
-  Recommendation,
+  CompactRecommendation,
   ReviewStatus,
   RunItem,
+  CompactItem,
   StreamEvent,
 } from "@/lib/types"
 
@@ -21,14 +22,14 @@ export interface ContactRun {
   name: string
   itemId?: string
   phase: RunPhase
-  recommendation?: Recommendation
+  recommendation?: CompactRecommendation
   // Locally chosen review outcome (drives the collapsed card state).
   action?: ReviewStatus
   error?: string
 }
 
 /** Map a persisted item (history / detail view) into a card-ready run. */
-export function runFromItem(item: RunItem): ContactRun {
+export function runFromItem(item: RunItem | CompactItem): ContactRun {
   const data = item.data
   if (data?.error || !data?.recommended_gifts) {
     return {
@@ -53,53 +54,121 @@ export function runFromItem(item: RunItem): ContactRun {
   }
 }
 
-export interface StreamLine {
+// One emitted work step within a phase.
+export interface RoadmapStep {
   id: number
   contact: string | null
-  label: string
-  kind: "info" | "node" | "result" | "error"
+  detail: string
 }
 
-const MAX_LOG_LINES = 200
+// A phase row in the roadmap, holding the steps that ran under it. `id` is unique
+// per occurrence so a revisited phase (broaden → validate again) and each contact
+// get their own row instead of merging back into an earlier one.
+export interface RoadmapPhase {
+  id: number
+  phase: string
+  label: string
+  steps: RoadmapStep[]
+  active: boolean
+}
 
-function nodeLabel(node: string, log: Record<string, unknown>): string {
-  const pretty = node.replace(/_/g, " ")
-  const msg = typeof log?.message === "string" ? log.message : ""
-  return msg ? `${pretty}: ${msg}` : pretty
+// Hard ceiling for one run before the watchdog aborts it (mirrors the backend
+// run_timeout). A stuck provider can't pin the UI past this.
+const RUN_TIMEOUT_MS = 10 * 60 * 1000
+
+// Human labels for the backend phase ids (graph/state.py step phases).
+const PHASE_LABELS: Record<string, string> = {
+  analyze: "Analyzing profiles",
+  search: "Searching for gifts",
+  validate: "Validating products",
+  broaden: "Broadening the search",
+  recommend: "Ranking & writing notes",
+  error: "Error",
 }
 
 type ResultData = Extract<StreamEvent, { event: "result" }>["data"]
 
-/** Recover the Recommendation from a result frame, dropping the SSE envelope fields. */
-function recOf(data: ResultData): Recommendation {
-  const { run_id, item_id, status, trace, ...rec } = data
-  void [run_id, item_id, status, trace]
+/** Recover the compact Recommendation from a result frame, dropping the envelope. */
+function recOf(data: ResultData): CompactRecommendation {
+  const { run_id, item_id, status, ...rec } = data
+  void [run_id, item_id, status]
   return rec
 }
 
 /**
  * Drives a batch run: streams contacts in, tracks per-contact state, and exposes
- * review/rerun actions. Owns the SSE connection and the scrolling progress log.
+ * review/rerun actions. Owns the SSE connection and the live phase roadmap.
  */
 export function useGifty() {
   const [runs, setRuns] = React.useState<ContactRun[]>([])
-  const [log, setLog] = React.useState<StreamLine[]>([])
+  const [roadmap, setRoadmap] = React.useState<RoadmapPhase[]>([])
   const [runId, setRunId] = React.useState<string | null>(null)
+  const [startedAt, setStartedAt] = React.useState<number | null>(null)
   const [isStreaming, setIsStreaming] = React.useState(false)
   const [error, setError] = React.useState<string | null>(null)
 
   // Lets a new run (or unmount) cancel the in-flight stream; see recommend/clear.
   const abortRef = React.useRef<AbortController | null>(null)
-  const lineId = React.useRef(0) // Monotonic key for log lines.
+  const watchdogRef = React.useRef<ReturnType<typeof setTimeout> | null>(null)
+  const stepId = React.useRef(0) // Monotonic key for roadmap steps.
 
-  // Append a log line, trimming the oldest so the buffer stays bounded.
-  const pushLine = React.useCallback(
-    (line: Omit<StreamLine, "id">) =>
-      setLog((prev) => {
-        const next = [...prev, { ...line, id: lineId.current++ }]
-        return next.length > MAX_LOG_LINES
-          ? next.slice(next.length - MAX_LOG_LINES)
-          : next
+  // Abort the in-flight stream and mark any still-streaming contacts with the
+  // given reason. The fetch abort also closes the connection, so the backend
+  // run is cancelled. Used by manual cancel and the hung-run watchdog.
+  const stop = React.useCallback((reason: string) => {
+    if (watchdogRef.current) {
+      clearTimeout(watchdogRef.current)
+      watchdogRef.current = null
+    }
+    abortRef.current?.abort()
+    abortRef.current = null
+    setIsStreaming(false)
+    setRuns((prev) =>
+      prev.map((r) =>
+        r.phase === "streaming" ? { ...r, phase: "error", error: reason } : r
+      )
+    )
+    setRoadmap((prev) => prev.map((p) => ({ ...p, active: false })))
+  }, [])
+
+  const armWatchdog = React.useCallback(() => {
+    if (watchdogRef.current) clearTimeout(watchdogRef.current)
+    watchdogRef.current = setTimeout(
+      () => stop(`Timed out after ${RUN_TIMEOUT_MS / 60000} minutes.`),
+      RUN_TIMEOUT_MS
+    )
+  }, [stop])
+
+  const clearWatchdog = React.useCallback(() => {
+    if (watchdogRef.current) {
+      clearTimeout(watchdogRef.current)
+      watchdogRef.current = null
+    }
+  }, [])
+
+  // Append a step to the current (trailing) row only if it's the same phase and
+  // contact; otherwise open a fresh row. This keeps a revisited phase (broaden →
+  // validate again) and each contact on their own row instead of jumping back.
+  const pushStep = React.useCallback(
+    (phase: string, detail: string, contact: string | null) =>
+      setRoadmap((prev) => {
+        const step = { id: stepId.current++, contact, detail }
+        const last = prev[prev.length - 1]
+        const sameRow =
+          last && last.phase === phase && (last.steps[0]?.contact ?? null) === contact
+        const next = sameRow
+          ? [...prev.slice(0, -1), { ...last, steps: [...last.steps, step] }]
+          : [
+              ...prev,
+              {
+                id: step.id,
+                phase,
+                label: PHASE_LABELS[phase] ?? phase,
+                steps: [step],
+                active: true,
+              },
+            ]
+        return next.map((p, i) => ({ ...p, active: i === next.length - 1 }))
       }),
     []
   )
@@ -128,10 +197,12 @@ export function useGifty() {
       abortRef.current = ctrl
 
       setError(null)
-      setLog([])
+      setRoadmap([])
       setRuns([])
       setRunId(null)
+      setStartedAt(Date.now())
       setIsStreaming(true)
+      armWatchdog()
 
       try {
         // Each SSE frame advances one contact's state; dispatch by event type.
@@ -141,23 +212,14 @@ export function useGifty() {
             setRuns(
               ev.data.contacts.map((name) => ({ name, phase: "streaming" }))
             )
-            pushLine({
-              contact: null,
-              label: `Starting run for ${ev.data.contacts.length} contact(s)`,
-              kind: "info",
-            })
           } else if (ev.event === "analyze") {
-            pushLine({
-              contact: null,
-              label: "Profiles analyzed, extracting signals",
-              kind: "info",
-            })
-          } else if (ev.event === "node") {
-            pushLine({
-              contact: ev.data.contact_name,
-              label: nodeLabel(ev.data.node, ev.data.log),
-              kind: "node",
-            })
+            pushStep(
+              "analyze",
+              `analyzed ${ev.data.contacts.length} profile(s)`,
+              null
+            )
+          } else if (ev.event === "step") {
+            pushStep(ev.data.phase, ev.data.detail, ev.data.contact_name)
           } else if (ev.event === "result") {
             const rec = recOf(ev.data)
             patchRun(rec.contact_name, {
@@ -165,21 +227,12 @@ export function useGifty() {
               phase: "ready",
               recommendation: rec,
             })
-            pushLine({
-              contact: rec.contact_name,
-              label: `${rec.recommended_gifts.length} gift(s) recommended`,
-              kind: "result",
-            })
           } else if (ev.event === "error") {
             patchRun(ev.data.contact_name, {
               phase: "error",
               error: ev.data.error,
             })
-            pushLine({
-              contact: ev.data.contact_name,
-              label: ev.data.error,
-              kind: "error",
-            })
+            pushStep("error", ev.data.error, ev.data.contact_name)
           }
         }
       } catch (e) {
@@ -188,11 +241,14 @@ export function useGifty() {
           setError(errMsg(e, "Stream failed."))
         }
       } finally {
+        clearWatchdog()
         if (abortRef.current === ctrl) abortRef.current = null
         setIsStreaming(false)
+        // Run finished: no phase is active any more.
+        setRoadmap((prev) => prev.map((p) => ({ ...p, active: false })))
       }
     },
-    [patchRun, pushLine]
+    [armWatchdog, clearWatchdog, patchRun, pushStep]
   )
 
   const review = React.useCallback(
@@ -215,21 +271,21 @@ export function useGifty() {
     async (run: ContactRun, feedback: string) => {
       if (!run.itemId) return
       const itemId = run.itemId
+      // Track this rerun's controller so cancel() can abort it too.
+      abortRef.current?.abort()
+      const ctrl = new AbortController()
+      abortRef.current = ctrl
       patchRun(run.name, { phase: "streaming", action: undefined })
-      pushLine({
-        contact: run.name,
-        label: feedback ? `Rerun: ${feedback}` : "Rerunning recommendation",
-        kind: "info",
-      })
+      // Reset the roadmap so the rerun shows its own live progress + timer.
+      setRoadmap([])
+      setStartedAt(Date.now())
+      setIsStreaming(true)
+      armWatchdog()
       try {
-        let updated: Recommendation | undefined
-        for await (const ev of streamRegenerate(itemId, feedback)) {
-          if (ev.event === "node") {
-            pushLine({
-              contact: run.name,
-              label: nodeLabel(ev.data.node, ev.data.log),
-              kind: "node",
-            })
+        let updated: CompactRecommendation | undefined
+        for await (const ev of streamRegenerate(itemId, feedback, ctrl.signal)) {
+          if (ev.event === "step") {
+            pushStep(ev.data.phase, ev.data.detail, ev.data.contact_name)
           } else if (ev.event === "result") {
             updated = recOf(ev.data)
           } else if (ev.event === "error") {
@@ -238,6 +294,8 @@ export function useGifty() {
         }
         patchRun(run.name, { phase: "ready", recommendation: updated })
       } catch (e) {
+        // Cancelled: leave the run marked by cancel(), don't fall back.
+        if (ctrl.signal.aborted) return
         // Fall back to the non-streaming endpoint if the stream breaks.
         try {
           const item = await regenerateItem(itemId, feedback)
@@ -248,37 +306,55 @@ export function useGifty() {
             error: errMsg(e, "Rerun failed."),
           })
         }
+      } finally {
+        clearWatchdog()
+        if (abortRef.current === ctrl) abortRef.current = null
+        setIsStreaming(false)
+        setRoadmap((prev) => prev.map((p) => ({ ...p, active: false })))
       }
     },
-    [patchRun, pushLine]
+    [armWatchdog, clearWatchdog, patchRun, pushStep]
   )
 
+  // Manual stop button: abort the in-flight run and mark it cancelled.
+  const cancel = React.useCallback(() => stop("Cancelled."), [stop])
+
   const clear = React.useCallback(() => {
+    clearWatchdog()
     abortRef.current?.abort()
     abortRef.current = null
     setRuns([])
-    setLog([])
+    setRoadmap([])
     setRunId(null)
+    setStartedAt(null)
     setError(null)
     setIsStreaming(false)
-  }, [])
+  }, [clearWatchdog])
 
-  // Abort the stream if the component unmounts mid-run.
-  React.useEffect(() => () => abortRef.current?.abort(), [])
+  // Abort the stream and clear the watchdog if the component unmounts mid-run.
+  React.useEffect(
+    () => () => {
+      if (watchdogRef.current) clearTimeout(watchdogRef.current)
+      abortRef.current?.abort()
+    },
+    []
+  )
 
   // Derived view state the UI switches on: nothing yet, running, or done.
   const phase = isStreaming ? "streaming" : runs.length > 0 ? "results" : "idle"
 
   return {
     runs,
-    log,
+    roadmap,
     runId,
+    startedAt,
     isStreaming,
     error,
     phase,
     recommend,
     review,
     rerun,
+    cancel,
     clear,
     clearError: () => setError(null),
   }

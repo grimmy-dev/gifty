@@ -1,5 +1,33 @@
 # Gifty
 
+<p align="center">
+  <img
+    src="public/banner.png"
+    alt="Gifty — turns enriched LinkedIn-style contact data into grounded, personalised gift recommendations"
+    width="100%"
+  />
+</p>
+
+<p align="center">
+  <img src="https://img.shields.io/badge/Python-3.14-3776AB?logo=python&logoColor=white" alt="Python 3.14" />
+  <img src="https://img.shields.io/badge/FastAPI-009688?logo=fastapi&logoColor=white" alt="FastAPI" />
+  <img src="https://img.shields.io/badge/LangGraph-1C3C3C?logo=langchain&logoColor=white" alt="LangGraph" />
+  <img src="https://img.shields.io/badge/Pydantic-E92063?logo=pydantic&logoColor=white" alt="Pydantic" />
+  <img src="https://img.shields.io/badge/SQLite-003B57?logo=sqlite&logoColor=white" alt="SQLite" />
+  <img src="https://img.shields.io/badge/uv-DE5FE9?logo=uv&logoColor=white" alt="uv" />
+  <br />
+  <img src="https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=black" alt="React 19" />
+  <img src="https://img.shields.io/badge/TypeScript-3178C6?logo=typescript&logoColor=white" alt="TypeScript" />
+  <img src="https://img.shields.io/badge/Vite-646CFF?logo=vite&logoColor=white" alt="Vite" />
+  <img src="https://img.shields.io/badge/Tailwind_CSS-06B6D4?logo=tailwindcss&logoColor=white" alt="Tailwind CSS" />
+  <img src="https://img.shields.io/badge/shadcn/ui-000000?logo=shadcnui&logoColor=white" alt="shadcn/ui" />
+  <img src="https://img.shields.io/badge/Bun-000000?logo=bun&logoColor=white" alt="Bun" />
+  <br />
+  <img src="https://img.shields.io/badge/Anthropic_Claude-D97757?logo=anthropic&logoColor=white" alt="Anthropic Claude" />
+  <img src="https://img.shields.io/badge/Google_Gemini-8E75B2?logo=googlegemini&logoColor=white" alt="Google Gemini" />
+  <img src="https://img.shields.io/badge/Tavily-Search-4F46E5" alt="Tavily" />
+</p>
+
 Gifty turns enriched, LinkedIn-style contact data into the top 3 personalised, real
 purchasable gift recommendations per contact. Each pick comes with reasoning, a personalised
 note, a confidence score, a risk level, and a human-review step.
@@ -50,9 +78,9 @@ POST /runs  (N contacts)
                             retry once if fewer than 3 grounded products survive
 ```
 
-Results are persisted as plain rows. Review (approve, reject, edit, regenerate) happens
+Results are persisted as plain rows. Review (approve, reject, regenerate) happens
 through separate REST endpoints, so it stays durable across restarts. The frontend can also
-stream a run live over Server-Sent Events for node-by-node progress.
+stream a run live over Server-Sent Events as a two-level roadmap (phase + sub-step) of progress.
 
 ## Layout
 

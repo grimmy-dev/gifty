@@ -23,12 +23,21 @@ class LLM:
         if self.provider == "claude":
             import anthropic
 
-            self.client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
+            self.client = anthropic.Anthropic(
+                api_key=settings.anthropic_api_key, timeout=settings.llm_timeout
+            )
             self.models = {"fast": settings.claude_fast, "smart": settings.claude_smart}
         else:
             from google import genai
+            from google.genai import types
 
-            self.client = genai.Client(api_key=settings.gemini_api_key)
+            # genai expects the request timeout in milliseconds.
+            self.client = genai.Client(
+                api_key=settings.gemini_api_key,
+                http_options=types.HttpOptions(
+                    timeout=int(settings.llm_timeout * 1000)
+                ),
+            )
             self.models = {"fast": settings.gemini_fast, "smart": settings.gemini_smart}
 
     def generate(

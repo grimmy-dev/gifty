@@ -38,12 +38,24 @@ setup_frontend() {
   (cd "$FRONTEND" && bun install)
 }
 
+# Kill any stale listener on a port so a previous crashed run doesn't block the
+# bind with "address already in use".
+free_port() {
+  if command -v fuser >/dev/null 2>&1; then
+    fuser -k "$1/tcp" >/dev/null 2>&1 || true
+  elif command -v lsof >/dev/null 2>&1; then
+    lsof -ti "tcp:$1" 2>/dev/null | xargs -r kill 2>/dev/null || true
+  fi
+}
+
 run_backend() {
+  free_port 8000
   echo "==> backend: http://localhost:8000 (docs at /docs)"
   (cd "$BACKEND" && exec uv run uvicorn app:app --reload --port 8000)
 }
 
 run_frontend() {
+  free_port 5173
   echo "==> frontend: http://localhost:5173"
   (cd "$FRONTEND" && exec bun run dev)
 }

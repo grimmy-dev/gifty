@@ -9,7 +9,7 @@ import {
   priceBadgeClass,
   riskBadgeClass,
 } from "@/lib/format"
-import type { RecommendedGift } from "@/lib/types"
+import type { CompactGift } from "@/lib/types"
 import { cn } from "@/lib/utils"
 import { Badge } from "@/components/ui/badge"
 import { CopyButton } from "@/components/gifty/copy-button"
@@ -17,7 +17,7 @@ import { CopyButton } from "@/components/gifty/copy-button"
 const badgeSize = "h-6 px-2.5 text-[0.8rem]"
 
 // Shared badge row: price, store, risk, and confidence, colour-coded by value.
-function GiftMeta({ gift }: { gift: RecommendedGift }) {
+function GiftMeta({ gift }: { gift: CompactGift }) {
   return (
     <div className="flex flex-wrap items-center gap-2">
       <Badge variant="outline" className={cn(badgeSize, priceBadgeClass)}>
@@ -44,7 +44,7 @@ function GiftMeta({ gift }: { gift: RecommendedGift }) {
   )
 }
 
-function ProductLink({ gift }: { gift: RecommendedGift }) {
+function ProductLink({ gift }: { gift: CompactGift }) {
   if (!gift.product_url) return null
   return (
     <a
@@ -63,7 +63,7 @@ function ProductLink({ gift }: { gift: RecommendedGift }) {
 export const GiftPrimary = React.memo(function GiftPrimary({
   gift,
 }: {
-  gift: RecommendedGift
+  gift: CompactGift
 }) {
   return (
     <div className="flex flex-col gap-3 rounded-lg bg-muted/40 p-4 ring-1 ring-foreground/5">
@@ -98,7 +98,7 @@ export const GiftPrimary = React.memo(function GiftPrimary({
         </figure>
       )}
 
-      {gift.assumptions.length > 0 && (
+      {gift.assumptions && gift.assumptions.length > 0 && (
         <ul className="flex flex-col gap-1 text-xs text-muted-foreground">
           {gift.assumptions.map((a, i) => (
             <li key={i} className="flex gap-1.5">
@@ -118,7 +118,7 @@ export const GiftPrimary = React.memo(function GiftPrimary({
 export const GiftMini = React.memo(function GiftMini({
   gift,
 }: {
-  gift: RecommendedGift
+  gift: CompactGift
 }) {
   return (
     <div

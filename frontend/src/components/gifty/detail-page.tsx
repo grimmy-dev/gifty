@@ -12,7 +12,12 @@ import {
   riskBadgeClass,
 } from "@/lib/format"
 import { cn, errMsg } from "@/lib/utils"
-import type { RecommendedGift, RunItem, TraceEntry } from "@/lib/types"
+import type {
+  ModelUsage,
+  RecommendedGift,
+  RunItemDetail,
+  TraceEntry,
+} from "@/lib/types"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Separator } from "@/components/ui/separator"
@@ -160,7 +165,7 @@ function TraceRow({ entry }: { entry: TraceEntry }) {
 /** Full detail for one recommendation: every gift as labelled key:value fields,
  *  plus the persisted trace (profile signals, search, per-node model/tokens/ms). */
 export function DetailPage({ itemId }: { itemId: string }) {
-  const [item, setItem] = React.useState<RunItem | null>(null)
+  const [item, setItem] = React.useState<RunItemDetail | null>(null)
   const [error, setError] = React.useState<string | null>(null)
 
   React.useEffect(() => {
@@ -201,7 +206,24 @@ export function DetailPage({ itemId }: { itemId: string }) {
   )
 }
 
-function DetailBody({ item }: { item: RunItem }) {
+function UsageRow({ row, total }: { row: ModelUsage; total?: boolean }) {
+  return (
+    <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 py-2 text-sm">
+      <span className={cn("font-medium", total && "font-semibold")}>
+        {row.model}
+      </span>
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 font-mono text-xs text-muted-foreground">
+        <span className="tabular-nums">{row.calls} calls</span>
+        <span className="tabular-nums">
+          {row.tokens_in} in / {row.tokens_out} out
+        </span>
+        <span className="tabular-nums">{row.ms} ms</span>
+      </div>
+    </div>
+  )
+}
+
+function DetailBody({ item }: { item: RunItemDetail }) {
   const data = item.data
   const gifts = [...(data.recommended_gifts ?? [])].sort(
     (a, b) => a.rank - b.rank
@@ -209,6 +231,7 @@ function DetailBody({ item }: { item: RunItem }) {
   const signals = data.profile_signals
   const search = data.search_trace
   const trace = data.trace ?? []
+  const usage = item.usage
   // Sum each node's latency for the pipeline header total.
   const totalMs = trace.reduce((sum, e) => sum + (num(e.ms) ?? 0), 0)
   const note = data.human_review?.note
@@ -231,6 +254,11 @@ function DetailBody({ item }: { item: RunItem }) {
       {note && (
         <p className="rounded-lg bg-muted/60 px-4 py-3 text-sm text-muted-foreground">
           {note}
+        </p>
+      )}
+      {data.ranking_reason && (
+        <p className="text-sm text-muted-foreground italic">
+          {data.ranking_reason}
         </p>
       )}
 
@@ -291,6 +319,23 @@ function DetailBody({ item }: { item: RunItem }) {
                 {trace.map((entry, i) => (
                   <TraceRow key={i} entry={entry} />
                 ))}
+              </div>
+            </div>
+          </>
+        )}
+
+        {usage.by_model.length > 0 && (
+          <>
+            <Separator />
+            <div className="flex flex-col gap-1">
+              <h3 className="text-xs font-semibold tracking-wider text-muted-foreground uppercase">
+                Usage by model
+              </h3>
+              <div className="divide-y divide-border/60">
+                {usage.by_model.map((row) => (
+                  <UsageRow key={row.model} row={row} />
+                ))}
+                <UsageRow row={usage.totals} total />
               </div>
             </div>
           </>

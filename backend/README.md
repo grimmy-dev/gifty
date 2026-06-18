@@ -22,9 +22,9 @@ validated candidates.
 - **Honest under weak data** - fewer than 3 grounded products lowers confidence and flags for human
   input rather than faking certainty.
 - **Provider-agnostic** - switch Claude ↔ Gemini with one env var; fast/smart model tiers.
-- **Human-in-the-loop** - approve / reject / edit / regenerate via REST, durable across restarts.
-- **Observable** - per-node model, token, and latency logs persisted in each run's trace.
-- **Live progress** - Server-Sent Events stream node-by-node progress to the UI.
+- **Human-in-the-loop** - approve / reject / regenerate via REST, durable across restarts.
+- **Observable** - per-node model, token, and latency logs persisted in each run's trace; a quiet lifecycle console plus a detailed rotating file log (toggle full detail with `DEBUG`).
+- **Live progress** - Server-Sent Events narrate the run as two-level roadmap `step` events (phase + sub-step) to the UI.
 
 ---
 
@@ -53,6 +53,26 @@ POST /runs  (N contacts)
 
 Weak grounding is surfaced, not hidden: 0 gifts → `human_review.note` asks for human input;
 fewer than 3 → a review warning.
+
+### Lifecycle
+
+End to end: analyze → per-contact graph (with one broaden/search retry) → persisted item →
+human review, where **regenerate** feeds back into the same graph.
+
+```mermaid
+flowchart TD
+    A[POST /runs or /runs/stream] --> B[analyze batch: signals + queries]
+    B --> S[search: Tavily + junk filter]
+    S --> V[validate: live + SSRF + relevance]
+    V -->|fewer than 3 grounded| BQ[broaden queries]
+    BQ --> S
+    V -->|enough or already retried| R[recommend: rank top 3 + notes]
+    R --> DB[(SQLite: item row + trace)]
+    DB --> RV{human review}
+    RV -->|approve| AP[approved]
+    RV -->|reject| RJ[rejected]
+    RV -->|regenerate with feedback| S
+```
 
 ### Layout
 
@@ -103,6 +123,10 @@ cp .env.example .env # then fill in your keys
 | `CORS_ORIGINS` | – | `localhost:5173`, `127.0.0.1:5173` | Allowed frontend origins (JSON list) |
 | `CLAUDE_FAST` / `CLAUDE_SMART` | – | `claude-haiku-4-5` / `claude-sonnet-4-6` | Model overrides |
 | `GEMINI_FAST` / `GEMINI_SMART` | – | see `.env.example` | Model overrides |
+| `DEBUG` | – | `false` | Mirror full detail logs to the console (otherwise console shows lifecycle + errors only) |
+| `LOG_PATH` | – | `logs/gifty.log` | Rotating detailed log file (5 MB × 3) |
+| `LLM_TIMEOUT` | – | `60` | Per-request LLM timeout (seconds); a hung provider call fails and retries |
+| `RUN_TIMEOUT` | – | `600` | Hard ceiling for one contact's pipeline (seconds); a run hung past this is aborted |
 
 Each provider runs two tiers: a **fast** model for retrieval/prep (analyze, validate) and a
 **smart** model for the final recommendation.
@@ -127,14 +151,18 @@ SQLite (`gifty.db`) is created automatically on first start.
 | `GET`  | `/health` | Liveness |
 | `POST` | `/runs` | Run the pipeline for a batch of contacts |
 | `GET`  | `/runs` | Recent batch runs (`?limit=`, newest first) |
-| `GET`  | `/runs/{run_id}` | Fetch a batch: all contact items |
-| `GET`  | `/recommendations/{item_id}` | Fetch one contact's result (structured output + trace) |
+| `GET`  | `/runs/{run_id}` | Fetch a batch: all contact items (compact, card-sized) |
+| `GET`  | `/recommendations/{item_id}` | Fetch one contact's full result + trace + per-model usage |
 | `POST` | `/recommendations/{item_id}/approve` | Mark approved (optional `note`) |
 | `POST` | `/recommendations/{item_id}/reject` | Mark rejected (optional `note`) |
-| `POST` | `/recommendations/{item_id}/edit` | Replace `recommended_gifts` with reviewer-edited ones |
 | `POST` | `/recommendations/{item_id}/regenerate` | Re-run the pipeline, optionally steered by `feedback` |
 | `POST` | `/runs/stream` | Run a batch over one **SSE** connection (UI path) |
 | `POST` | `/recommendations/{item_id}/regenerate/stream` | Regenerate one contact with live **SSE** progress |
+
+> **Explore the backend on its own.** FastAPI ships interactive API docs at
+> [`/docs`](http://localhost:8000/docs) (Swagger UI) and [`/redoc`](http://localhost:8000/redoc).
+> Every endpoint, request/response schema, and the shared error envelope are browsable there, and you
+> can fire requests straight from the page - no frontend needed.
 
 The request body is either a bare contacts array or `{ "contacts": [...] }`.
 
@@ -152,8 +180,11 @@ curl -s localhost:8000/recommendations/<item_id> # one contact's full result
 
 `sample_input.json` holds two contacts in different countries/currencies to exercise batching and
 per-contact isolation. Each result matches the assignment output schema (`profile_signals`,
-`search_trace`, `recommended_gifts`, `human_review`) plus a `trace` array of per-node
-model/token/latency logs.
+`search_trace`, `recommended_gifts`, `ranking_reason`, `human_review`). Card endpoints
+(`GET /runs/{run_id}`, the SSE `result`) return a **compact** shape - no `inputs`/`trace`, and only
+the top pick carries message/reasoning/assumptions. The detail endpoint
+(`GET /recommendations/{item_id}`) returns the full result plus the `trace` array of per-node
+model/token/latency logs and a per-model `usage` rollup.
 
 Contacts run concurrently; if one fails it returns `status: "failed"` for that contact without
 affecting the others.
@@ -163,10 +194,10 @@ affecting the others.
 `POST /runs` is the batch path (curl/Postman → poll `GET /runs/{run_id}`). The UI uses the SSE path
 for live progress: `POST /runs/stream` analyzes once, then walks contacts **sequentially over a
 single connection** (one graph at a time). It emits `start` (with the batch `run_id`) → `analyze` →
-per contact a stream of `node` events (each tagged `contact_name`, carrying that node's log) and a
-`result` event with the `item_id` and full result. Streamed runs are persisted identically, so the
-review endpoints apply afterwards. `regenerate/stream` does the same for one contact from stored
-inputs (no re-analyze).
+per contact a stream of `step` events (each tagged `contact_name`, carrying a `phase` and a
+human `detail` line) and a `result` event with the `item_id` and the compact result. Streamed runs
+are persisted identically, so the review endpoints apply afterwards. `regenerate/stream` does the
+same for one contact from stored inputs (no re-analyze).
 
 ### Error format
 

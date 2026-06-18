@@ -8,7 +8,7 @@ from urllib.parse import urlparse
 import httpx
 from pydantic import BaseModel
 
-from graph.state import GraphState, with_log
+from graph.state import GraphState, step, with_log
 from llm.client import llm
 from utils.models import Product
 from utils.prompts import BROADEN_SYS, VALIDATE_SYS, contact_summary
@@ -75,6 +75,12 @@ class Validation(BaseModel):
 def broaden_queries(state: GraphState) -> dict:
     """Rewrite queries more broadly after a poor first search (one-shot retry)."""
     c, sig = state["contact"], state["signals"]
+    valid = len(state.get("validated", []))
+    step(
+        "broaden",
+        f"first pass came up short ({valid} valid) — widening the net",
+        c.name,
+    )
     user = (
         f"{contact_summary(c)}\n\nSignals: {sig.strong_signals + sig.weak_signals}\n"
         f"Queries that returned too few valid products: {state['queries']}"
@@ -85,14 +91,18 @@ def broaden_queries(state: GraphState) -> dict:
 
 def search(state: GraphState) -> dict:
     """Run each query and collect de-duplicated product candidates."""
+    name = state["contact"].name
     seen: set[str] = set()  # URLs already kept, so queries can't yield duplicates.
     candidates: list[Product] = []
     for q in state["queries"]:
-        for p in search_client.search(q):
+        hits = search_client.search(q)
+        for p in hits:
             # Keep first sighting of each real product URL; drop social/aggregator hosts.
             if p.url and p.url not in seen and not is_junk(p.url):
                 seen.add(p.url)
                 candidates.append(p)
+        step("search", f'searched "{q}" → {len(hits)} hits', name)
+    step("search", f"found {len(candidates)} candidates", name)
     return with_log(
         state, "search", {"results": len(candidates)}, candidates=candidates
     )
@@ -101,6 +111,7 @@ def search(state: GraphState) -> dict:
 async def validate_products(state: GraphState) -> dict:
     """Drop dead links, then keep candidates judged relevant and appropriate."""
     candidates = state["candidates"]
+    name = state["contact"].name
     headers = {"User-Agent": "Mozilla/5.0"}
     # Redirects disabled: a 3xx means the page exists (not dead) and chasing it
     # would reopen the SSRF hole that is_safe_url just closed.
@@ -122,10 +133,13 @@ async def validate_products(state: GraphState) -> dict:
     # Drop the None (dead/unsafe) entries and cap the LLM input at 20 products.
     live = [p for p in checked if p][:20]
     if not live:
+        step("validate", "kept 0 of 0 — no live candidates", name)
         return with_log(
             state, "validate_products", {"live": 0, "kept": 0}, validated=[]
         )
 
+    for p in live:
+        step("validate", f'validating "{p.title}"', name)
     listing = "\n".join(f"{p.title} | {p.url} | {p.snippet}" for p in live)
     user = f"{contact_summary(state['contact'])}\n\nCandidates:\n{listing}"
     out, log = await asyncio.to_thread(
@@ -144,6 +158,7 @@ async def validate_products(state: GraphState) -> dict:
         for p in live
         if p.url in judged and judged[p.url].relevant
     ]
+    step("validate", f"kept {len(kept)} of {len(live)}", name)
     return with_log(
         state,
         "validate_products",

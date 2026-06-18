@@ -5,7 +5,7 @@
     "": {
       "name": "vite-app",
       "dependencies": {
-        "@fontsource-variable/roboto-serif": "^5.2.9",
+        "@fontsource-variable/jetbrains-mono": "^5.2.8",
         "@tailwindcss/vite": "^4",
         "class-variance-authority": "^0.7.1",
         "clsx": "^2.1.1",
@@ -127,7 +127,7 @@
 
     "@floating-ui/utils": ["@floating-ui/utils@0.2.11", "", {}, "sha512-RiB/yIh78pcIxl6lLMG0CgBXAZ2Y0eVHqMPYugu+9U0AeT6YBeiJpf7lbdJNIugFP5SIjwNRgo4DhR1Qxi26Gg=="],
 
-    "@fontsource-variable/roboto-serif": ["@fontsource-variable/roboto-serif@5.2.9", "", {}, "sha512-C502AILLgiRZmP3mgXXJiYp8/tQ+J/XQWw/dWtlRgE9X0yziBse9VHM9pCgaWqqzkdz4JB36fc0eYz0UritJIQ=="],
+    "@fontsource-variable/jetbrains-mono": ["@fontsource-variable/jetbrains-mono@5.2.8", "", {}, "sha512-WBA9elru6Jdp5df2mES55wuOO0WIrn3kpXnI4+W2ek5u3ZgLS9XS4gmIlcQhiZOWEKl95meYdvK7xI+ETLCq/Q=="],
 
     "@hono/node-server": ["@hono/node-server@1.19.14", "", { "peerDependencies": { "hono": "^4" } }, "sha512-GwtvgtXxnWsucXvbQXkRgqksiH2Qed37H9xHZocE5sA3N8O8O8/8FA3uclQXxXVzc9XBZuEOMK7+r02FmSpHtw=="],
 
