@@ -17,10 +17,10 @@ Built with **Vite + React + TypeScript**, **Tailwind CSS v4**, and **shadcn/ui**
 - **Review actions** - accept, reject, or regenerate (with optional feedback) per contact; copy or
   download the final JSON.
 - **Recent runs** - a history tab lists past batches loaded from the backend.
-- **Detail route** - `/recommendation/:id` refetches an item and shows every gift as labelled
-  key:value fields (price / confidence / risk colour-coded) plus the full trace: profile signals,
-  search queries and products-considered count, per-node model / tokens / latency, and a per-model
-  usage rollup.
+- **Detail page** - click **View more** on any recommendation card (or open `/recommendation/:id`
+  directly) for the full view: every gift as labelled key:value fields (price / confidence / risk
+  colour-coded) plus the full trace - profile signals, search queries and products-considered count,
+  per-node model / tokens / latency, and a per-model usage rollup.
 - **Light / dark theme** - press `d` to toggle.
 
 ---

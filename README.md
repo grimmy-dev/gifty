@@ -80,7 +80,9 @@ POST /runs  (N contacts)
 
 Results are persisted as plain rows. Review (approve, reject, regenerate) happens
 through separate REST endpoints, so it stays durable across restarts. The frontend can also
-stream a run live over Server-Sent Events as a two-level roadmap (phase + sub-step) of progress.
+stream a run live over Server-Sent Events as a two-level roadmap (phase + sub-step) of progress,
+and **View more** on any card opens a detail page with the full gift fields, trace, and per-model
+usage.
 
 ## Layout
 
