@@ -1,6 +1,6 @@
 import type { Contact, RunRequest } from "@/lib/types"
 
-// Mirror of backend/sample_input.json — used by "Use sample data".
+// Mirror of backend/sample_input.json - used by "Use sample data".
 export const SAMPLE_REQUEST: RunRequest = {
   contacts: [
     {
@@ -31,7 +31,7 @@ export const SAMPLE_REQUEST: RunRequest = {
           "Still recovering from yesterday's India vs Australia match. What a game!",
         ],
         recent_comments: [
-          "Completely agree — pipeline discipline matters more than heroic end-of-quarter selling.",
+          "Completely agree - pipeline discipline matters more than heroic end-of-quarter selling.",
           "Cricket teaches leadership better than most management books.",
         ],
         engaged_topics: [

@@ -39,7 +39,7 @@ def envelope(status: int, message: str, details: object = None) -> JSONResponse:
 class EnvelopeErrors:
     """ASGI middleware turning unhandled exceptions into the 500 error envelope.
 
-    Lives inside CORSMiddleware so 500s still carry CORS headers — Starlette's
+    Lives inside CORSMiddleware so 500s still carry CORS headers - Starlette's
     built-in ServerErrorMiddleware is outermost and would bypass them. Kept as
     raw ASGI (not BaseHTTPMiddleware) so it never buffers the SSE streams.
     """

@@ -1,7 +1,7 @@
-# Gifty — Backend
+# Gifty - Backend
 
 An AI workflow that turns enriched LinkedIn-style contact data into the **top 3 personalised, real
-purchasable gift recommendations** per contact — each with reasoning, a personalised note,
+purchasable gift recommendations** per contact - each with reasoning, a personalised note,
 confidence, risk, and a human-review step.
 
 Built with **FastAPI** and **LangGraph**. Gifts are never invented: a web search engine (Tavily)
@@ -15,16 +15,16 @@ validated candidates.
 
 ## Highlights
 
-- **Multi-step LangGraph pipeline** — analyze → search → validate → recommend, not a single prompt.
-- **Grounded** — only live, validated product URLs reach the final ranking; nothing hallucinated.
-- **Guardrails** — a deterministic filter strips sensitive signals (religion, politics, health,
+- **Multi-step LangGraph pipeline** - analyze → search → validate → recommend, not a single prompt.
+- **Grounded** - only live, validated product URLs reach the final ranking; nothing hallucinated.
+- **Guardrails** - a deterministic filter strips sensitive signals (religion, politics, health,
   ethnicity, gender, family status) regardless of model output, backing the prompt instructions.
-- **Honest under weak data** — fewer than 3 grounded products lowers confidence and flags for human
+- **Honest under weak data** - fewer than 3 grounded products lowers confidence and flags for human
   input rather than faking certainty.
-- **Provider-agnostic** — switch Claude ↔ Gemini with one env var; fast/smart model tiers.
-- **Human-in-the-loop** — approve / reject / edit / regenerate via REST, durable across restarts.
-- **Observable** — per-node model, token, and latency logs persisted in each run's trace.
-- **Live progress** — Server-Sent Events stream node-by-node progress to the UI.
+- **Provider-agnostic** - switch Claude ↔ Gemini with one env var; fast/smart model tiers.
+- **Human-in-the-loop** - approve / reject / edit / regenerate via REST, durable across restarts.
+- **Observable** - per-node model, token, and latency logs persisted in each run's trace.
+- **Live progress** - Server-Sent Events stream node-by-node progress to the UI.
 
 ---
 
@@ -39,7 +39,7 @@ POST /runs  (N contacts)
   │             └─ deterministic safety guard          # scrubs sensitive signals (no LLM)
   │
   └─ Stage 2 · per-contact graph (concurrent, bounded by a Semaphore)
-                search → validate → recommend
+                search → validate → recommend (reasoning model)
                              └─ retry once (broaden queries) if < 3 grounded products
 ```
 
@@ -177,7 +177,7 @@ Every non-2xx response shares one envelope:
 ```
 
 `code` is machine-readable (`VALIDATION_ERROR`, `NOT_FOUND`, `CONFLICT`, `INTERNAL_ERROR`, …);
-validation errors carry per-field `details`. `5xx` messages are generic — internals are logged,
+validation errors carry per-field `details`. `5xx` messages are generic - internals are logged,
 never returned to the client.
 
 ---
@@ -186,11 +186,11 @@ never returned to the client.
 
 The pipeline runs to completion and persists the result; review happens through separate REST
 endpoints rather than a LangGraph `interrupt()`. This keeps the graph a pure function, decouples
-review from the run, and makes review durable across restarts — each item row stores the graph
+review from the run, and makes review durable across restarts - each item row stores the graph
 `inputs`, so `regenerate` re-runs without the original request.
 
 `approve` / `reject` / `edit` are terminal. `regenerate` is the only looping action and is
-**human-gated, not auto-looping** — each call is one deliberate reviewer action. Its *internal*
+**human-gated, not auto-looping** - each call is one deliberate reviewer action. Its *internal*
 search retry is bounded (a single query-broaden pass per run).
 
 ---

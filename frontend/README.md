@@ -1,7 +1,7 @@
-# Gifty — Frontend
+# Gifty - Frontend
 
 The review UI for Gifty. Paste or upload enriched contact data, watch the recommendation pipeline
-run live, then review each contact's gifts — approve, reject, regenerate with feedback, or export
+run live, then review each contact's gifts - approve, reject, regenerate with feedback, or export
 the final JSON. A dedicated detail route shows the full trace behind any recommendation.
 
 Built with **Vite + React + TypeScript**, **Tailwind CSS v4**, and **shadcn/ui**.
@@ -10,15 +10,15 @@ Built with **Vite + React + TypeScript**, **Tailwind CSS v4**, and **shadcn/ui**
 
 ## Features
 
-- **Flexible input** — paste JSON, upload a `.json` file, or load bundled sample data.
-- **Live streaming** — Server-Sent Events drive a node-by-node progress log as the backend works.
-- **Review actions** — accept, reject, or regenerate (with optional feedback) per contact; copy or
+- **Flexible input** - paste JSON, upload a `.json` file, or load bundled sample data.
+- **Live streaming** - Server-Sent Events drive a node-by-node progress log as the backend works.
+- **Review actions** - accept, reject, or regenerate (with optional feedback) per contact; copy or
   download the final JSON.
-- **Recent runs** — a history tab lists past batches loaded from the backend.
-- **Detail route** — `/recommendation/:id` refetches an item and shows every gift as labelled
+- **Recent runs** - a history tab lists past batches loaded from the backend.
+- **Detail route** - `/recommendation/:id` refetches an item and shows every gift as labelled
   key:value fields (price / confidence / risk colour-coded) plus the full trace: profile signals,
   search queries and products-considered count, and per-node model / tokens / latency.
-- **Light / dark theme** — press `d` to toggle.
+- **Light / dark theme** - press `d` to toggle.
 
 ---
 
