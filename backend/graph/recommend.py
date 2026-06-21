@@ -41,7 +41,7 @@ def recommend(state: GraphState) -> dict:
         f"Validated candidates:\n{listing}{feedback_block}"
     )
     # Smart tier does the ranking + note writing; cap at 3 even if it returns more.
-    out, log = llm.generate("smart", RECOMMEND_SYS, user, RecommendOut, max_tokens=3000)
+    out, log = llm.generate("smart", RECOMMEND_SYS, user, RecommendOut, max_tokens=2500)
     step("recommend", f"ranked — {out.ranking_reason}", c.name)
     return with_log(
         state, "recommend", log, ranked=out.gifts[:3], ranking_reason=out.ranking_reason

@@ -89,13 +89,18 @@ def broaden_queries(state: GraphState) -> dict:
     return with_log(state, "broaden_queries", log, queries=out.queries, retried=True)
 
 
-def search(state: GraphState) -> dict:
-    """Run each query and collect de-duplicated product candidates."""
+async def search(state: GraphState) -> dict:
+    """Run every query in parallel and collect de-duplicated product candidates."""
     name = state["contact"].name
+    queries = state["queries"]
+    # Each Tavily call is a blocking round-trip; fan them out so N queries cost one
+    # round-trip, not N. Results stay query-ordered, so de-dup is deterministic.
+    results = await asyncio.gather(
+        *(asyncio.to_thread(search_client.search, q) for q in queries)
+    )
     seen: set[str] = set()  # URLs already kept, so queries can't yield duplicates.
     candidates: list[Product] = []
-    for q in state["queries"]:
-        hits = search_client.search(q)
+    for q, hits in zip(queries, results):
         for p in hits:
             # Keep first sighting of each real product URL; drop social/aggregator hosts.
             if p.url and p.url not in seen and not is_junk(p.url):
@@ -116,7 +121,7 @@ async def validate_products(state: GraphState) -> dict:
     # Redirects disabled: a 3xx means the page exists (not dead) and chasing it
     # would reopen the SSRF hole that is_safe_url just closed.
     async with httpx.AsyncClient(
-        timeout=5, follow_redirects=False, headers=headers
+        timeout=3, follow_redirects=False, headers=headers
     ) as cl:
 
         async def alive(p: Product) -> Product | None:
@@ -143,7 +148,7 @@ async def validate_products(state: GraphState) -> dict:
     listing = "\n".join(f"{p.title} | {p.url} | {p.snippet}" for p in live)
     user = f"{contact_summary(state['contact'])}\n\nCandidates:\n{listing}"
     out, log = await asyncio.to_thread(
-        llm.generate, "fast", VALIDATE_SYS, user, Validation, 3000
+        llm.generate, "fast", VALIDATE_SYS, user, Validation, 2000
     )
     # Index the model's verdicts by URL so we can match them back to live products.
     judged = {v.url: v for v in out.products}
