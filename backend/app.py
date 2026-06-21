@@ -8,6 +8,7 @@ per-contact review under `/recommendations/{item_id}`.
 import asyncio
 import json
 from contextlib import asynccontextmanager
+from dataclasses import dataclass
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -45,6 +46,8 @@ from utils.models import (
     RunRequest,
     SearchTrace,
     compact_of,
+    stored_inputs,
+    stored_trace,
     usage_of,
 )
 
@@ -128,38 +131,88 @@ def build_run_data(
     return data
 
 
-async def run_contact(
-    run_id: str, contact: Contact, signals: ProfileSignals, queries: list[str]
-) -> ItemSummary:
-    """Run one contact through the graph and persist into the batch; isolate failures."""
+@dataclass
+class PipelineDone:
+    """Terminal event from run_pipeline: the persisted item id, its status, the
+    stored data, and an error reason when the run failed."""
+
+    item_id: str | None
+    status: str
+    data: dict
+    error: str | None = None
+
+
+async def run_pipeline(
+    run_id: str,
+    contact: Contact,
+    signals: ProfileSignals,
+    queries: list[str],
+    *,
+    item_id: str | None = None,
+    feedback: str | None = None,
+):
+    """Run one contact through the graph, narrate each step, and persist the item.
+
+    Yields each work step as a chunk dict, then a final PipelineDone. Success
+    persists the result: a new item when item_id is None, else an update. A
+    failure on a fresh run records a failed row so the batch still lists the
+    contact; a failed regenerate (item_id given) leaves the prior item untouched.
+    """
+    init: GraphState = {"contact": contact, "signals": signals, "queries": queries}
+    if feedback:
+        init["review_feedback"] = feedback
+    final_state: GraphState = {}
     try:
         async with asyncio.timeout(settings.run_timeout):
-            state = await graph.ainvoke(
-                {"contact": contact, "signals": signals, "queries": queries}
-            )
-        data = build_run_data(contact, signals, queries, state)
-        item_id = await asyncio.to_thread(create_item, run_id, contact.name, data)
-        return ItemSummary(
-            item_id=item_id, contact_name=contact.name, status="pending_review"
-        )
+            async for mode, chunk in graph.astream(
+                init, stream_mode=["custom", "values"]
+            ):
+                if mode == "custom":
+                    yield chunk
+                else:
+                    final_state = chunk
     except Exception as exc:
         reason = run_error(exc)
-        log.debug("contact %s failed", contact.name, exc_info=True)
+        log.debug("pipeline for %s failed", contact.name, exc_info=True)
         lifecycle(
             f"failed: {reason} — see logs: {settings.log_path}",
             run_id=run_id,
             contact=contact.name,
         )
-        item_id = await asyncio.to_thread(
-            create_item,
-            run_id,
-            contact.name,
-            {"contact_name": contact.name, "error": reason},
-            status="failed",
+        data = {"contact_name": contact.name, "error": reason}
+        failed_id = item_id
+        if item_id is None:
+            failed_id = await asyncio.to_thread(
+                create_item, run_id, contact.name, data, status="failed"
+            )
+        yield PipelineDone(
+            item_id=failed_id, status="failed", data=data, error=reason
         )
-        return ItemSummary(
-            item_id=item_id, contact_name=contact.name, status="failed", error=reason
-        )
+        return
+
+    data = build_run_data(contact, signals, queries, final_state)
+    if item_id:
+        await asyncio.to_thread(update_item, item_id, status="pending_review", data=data)
+    else:
+        item_id = await asyncio.to_thread(create_item, run_id, contact.name, data)
+    yield PipelineDone(item_id=item_id, status="pending_review", data=data)
+
+
+async def run_contact(
+    run_id: str, contact: Contact, signals: ProfileSignals, queries: list[str]
+) -> ItemSummary:
+    """Run one contact through the pipeline and persist into the batch; isolate failures."""
+    done: PipelineDone | None = None
+    async for ev in run_pipeline(run_id, contact, signals, queries):
+        if isinstance(ev, PipelineDone):
+            done = ev
+    assert done is not None  # run_pipeline always ends with a PipelineDone.
+    return ItemSummary(
+        item_id=done.item_id,
+        contact_name=contact.name,
+        status=done.status,
+        error=done.error,
+    )
 
 
 @app.get("/health")
@@ -254,7 +307,7 @@ def _set_review(data: dict, status: str, note: str) -> None:
 async def load_regen_inputs(item_id: str) -> tuple[Contact, ProfileSignals, dict, str]:
     """Load an item's stored graph inputs for regeneration; 409 if none were saved."""
     item = await asyncio.to_thread(_load, item_id)
-    inputs = item["data"].get("inputs")
+    inputs = stored_inputs(item["data"])
     if not inputs:
         raise HTTPException(
             status_code=409,
@@ -272,7 +325,7 @@ async def load_regen_inputs(item_id: str) -> tuple[Contact, ProfileSignals, dict
 def read_item(item_id: str) -> dict:
     """Full item (result + trace + inputs) plus the derived per-model usage."""
     item = _load(item_id)
-    item["usage"] = usage_of(item["data"].get("trace", []))
+    item["usage"] = usage_of(stored_trace(item["data"]))
     return item
 
 
@@ -328,52 +381,28 @@ async def stream_run(
     item_id: str | None = None,
     feedback: str | None = None,
 ):
-    """Stream a contact's graph run as SSE: one `step` event per work step, then `result`.
-
-    Persists at the end (create within the batch on a fresh run, update when
-    regenerating) so the streamed run is reviewable exactly like a non-streamed one.
+    """Render a contact's pipeline run as SSE: one `step` event per work step,
+    then a `result` (or `error`). Persistence happens inside run_pipeline, so the
+    streamed run is reviewable exactly like a non-streamed one.
     """
-    init: GraphState = {"contact": contact, "signals": signals, "queries": queries}
-    if feedback:
-        init["review_feedback"] = feedback
-    final_state: GraphState = {}
-    try:
-        async with asyncio.timeout(settings.run_timeout):
-            async for mode, chunk in graph.astream(
-                init, stream_mode=["custom", "values"]
-            ):
-                if mode == "custom":
-                    yield sse("step", chunk)
-                else:
-                    final_state = chunk
-    except Exception as exc:
-        reason = run_error(exc)
-        log.debug("stream for %s failed", contact.name, exc_info=True)
-        lifecycle(
-            f"failed: {reason} — see logs: {settings.log_path}",
-            run_id=run_id,
-            contact=contact.name,
-        )
-        yield sse("error", {"contact_name": contact.name, "error": reason})
-        return
-
-    data = build_run_data(contact, signals, queries, final_state)
-    if item_id:
-        await asyncio.to_thread(
-            update_item, item_id, status="pending_review", data=data
-        )
-    else:
-        item_id = await asyncio.to_thread(create_item, run_id, contact.name, data)
-    yield sse(
-        "result",
-        {
-            "run_id": run_id,
-            "item_id": item_id,
-            "contact_name": contact.name,
-            "status": "pending_review",
-            **compact_of(data),
-        },
-    )
+    async for ev in run_pipeline(
+        run_id, contact, signals, queries, item_id=item_id, feedback=feedback
+    ):
+        if not isinstance(ev, PipelineDone):
+            yield sse("step", ev)
+        elif ev.error:
+            yield sse("error", {"contact_name": contact.name, "error": ev.error})
+        else:
+            yield sse(
+                "result",
+                {
+                    "run_id": run_id,
+                    "item_id": ev.item_id,
+                    "contact_name": contact.name,
+                    "status": ev.status,
+                    **compact_of(ev.data),
+                },
+            )
 
 
 @app.post("/runs/stream")

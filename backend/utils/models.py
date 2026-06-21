@@ -298,9 +298,28 @@ class APIError(BaseModel):
 
 # ---------- Shape helpers ----------
 
-# Heavy per-gift fields stripped from ranks 2-3 on cards.
-_GIFT_DETAIL = ("personalisation_reasoning", "personalised_message", "assumptions")
+# Heavy per-gift fields stripped from ranks 2-3 on cards. These are exactly the
+# optional (non-required) fields on CompactGift, so the card shape is declared once
+# on the model and compaction follows it: mark a gift field optional there to trim it.
+_GIFT_DETAIL = tuple(
+    name for name, field in CompactGift.model_fields.items() if not field.is_required()
+)
 _DROP = ("inputs", "trace")
+
+
+def is_failed(data: dict) -> bool:
+    """True when the stored envelope holds a failure, not a recommendation."""
+    return "recommended_gifts" not in data
+
+
+def stored_inputs(data: dict) -> dict | None:
+    """Replayable graph inputs saved with a successful item, or None."""
+    return data.get("inputs")
+
+
+def stored_trace(data: dict) -> list[dict]:
+    """Per-node trace saved with a successful item."""
+    return data.get("trace", [])
 
 
 def compact_of(data: dict) -> dict:
@@ -309,7 +328,7 @@ def compact_of(data: dict) -> dict:
     Failed items (no `recommended_gifts`) are returned untouched except for the
     dropped keys.
     """
-    if "recommended_gifts" not in data:
+    if is_failed(data):
         return {k: v for k, v in data.items() if k not in _DROP}
     gifts = []
     for g in data["recommended_gifts"]:

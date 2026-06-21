@@ -181,6 +181,40 @@ export function useGifty() {
     []
   )
 
+  // Drive one SSE stream into state: cancel any prior stream, arm the watchdog,
+  // reset the roadmap, pump every frame through `handle`, and always tear the
+  // connection down. `onError` decides what a failure means for the caller (an
+  // abort is reported via the `aborted` flag, not as a real failure).
+  const runStream = React.useCallback(
+    async (
+      source: (signal: AbortSignal) => AsyncGenerator<StreamEvent>,
+      handle: (ev: StreamEvent) => void,
+      onError: (e: unknown, aborted: boolean) => void | Promise<void>
+    ) => {
+      abortRef.current?.abort()
+      const ctrl = new AbortController()
+      abortRef.current = ctrl
+
+      setRoadmap([])
+      setStartedAt(Date.now())
+      setIsStreaming(true)
+      armWatchdog()
+
+      try {
+        for await (const ev of source(ctrl.signal)) handle(ev)
+      } catch (e) {
+        await onError(e, ctrl.signal.aborted)
+      } finally {
+        clearWatchdog()
+        if (abortRef.current === ctrl) abortRef.current = null
+        setIsStreaming(false)
+        // Run finished: no phase is active any more.
+        setRoadmap((prev) => prev.map((p) => ({ ...p, active: false })))
+      }
+    },
+    [armWatchdog, clearWatchdog]
+  )
+
   const recommend = React.useCallback(
     async (rawJSON: string) => {
       let req
@@ -191,22 +225,14 @@ export function useGifty() {
         return
       }
 
-      // Cancel any previous stream, then track this one's controller.
-      abortRef.current?.abort()
-      const ctrl = new AbortController()
-      abortRef.current = ctrl
-
       setError(null)
-      setRoadmap([])
       setRuns([])
       setRunId(null)
-      setStartedAt(Date.now())
-      setIsStreaming(true)
-      armWatchdog()
 
-      try {
-        // Each SSE frame advances one contact's state; dispatch by event type.
-        for await (const ev of streamRuns(req, ctrl.signal)) {
+      // Each SSE frame advances one contact's state; dispatch by event type.
+      await runStream(
+        (signal) => streamRuns(req, signal),
+        (ev) => {
           if (ev.event === "start") {
             setRunId(ev.data.run_id)
             setRuns(
@@ -234,21 +260,14 @@ export function useGifty() {
             })
             pushStep("error", ev.data.error, ev.data.contact_name)
           }
-        }
-      } catch (e) {
+        },
         // A deliberate abort throws too; only surface real failures.
-        if (!ctrl.signal.aborted) {
-          setError(errMsg(e, "Stream failed."))
+        (e, aborted) => {
+          if (!aborted) setError(errMsg(e, "Stream failed."))
         }
-      } finally {
-        clearWatchdog()
-        if (abortRef.current === ctrl) abortRef.current = null
-        setIsStreaming(false)
-        // Run finished: no phase is active any more.
-        setRoadmap((prev) => prev.map((p) => ({ ...p, active: false })))
-      }
+      )
     },
-    [armWatchdog, clearWatchdog, patchRun, pushStep]
+    [runStream, patchRun, pushStep]
   )
 
   const review = React.useCallback(
@@ -271,49 +290,36 @@ export function useGifty() {
     async (run: ContactRun, feedback: string) => {
       if (!run.itemId) return
       const itemId = run.itemId
-      // Track this rerun's controller so cancel() can abort it too.
-      abortRef.current?.abort()
-      const ctrl = new AbortController()
-      abortRef.current = ctrl
       patchRun(run.name, { phase: "streaming", action: undefined })
-      // Reset the roadmap so the rerun shows its own live progress + timer.
-      setRoadmap([])
-      setStartedAt(Date.now())
-      setIsStreaming(true)
-      armWatchdog()
-      try {
-        let updated: CompactRecommendation | undefined
-        for await (const ev of streamRegenerate(itemId, feedback, ctrl.signal)) {
+
+      await runStream(
+        (signal) => streamRegenerate(itemId, feedback, signal),
+        (ev) => {
           if (ev.event === "step") {
             pushStep(ev.data.phase, ev.data.detail, ev.data.contact_name)
           } else if (ev.event === "result") {
-            updated = recOf(ev.data)
+            patchRun(run.name, { phase: "ready", recommendation: recOf(ev.data) })
           } else if (ev.event === "error") {
             throw new Error(ev.data.error)
           }
+        },
+        async (e, aborted) => {
+          // Cancelled: leave the run marked by cancel(), don't fall back.
+          if (aborted) return
+          // Fall back to the non-streaming endpoint if the stream breaks.
+          try {
+            const item = await regenerateItem(itemId, feedback)
+            patchRun(run.name, { phase: "ready", recommendation: item.data })
+          } catch {
+            patchRun(run.name, {
+              phase: "error",
+              error: errMsg(e, "Rerun failed."),
+            })
+          }
         }
-        patchRun(run.name, { phase: "ready", recommendation: updated })
-      } catch (e) {
-        // Cancelled: leave the run marked by cancel(), don't fall back.
-        if (ctrl.signal.aborted) return
-        // Fall back to the non-streaming endpoint if the stream breaks.
-        try {
-          const item = await regenerateItem(itemId, feedback)
-          patchRun(run.name, { phase: "ready", recommendation: item.data })
-        } catch {
-          patchRun(run.name, {
-            phase: "error",
-            error: errMsg(e, "Rerun failed."),
-          })
-        }
-      } finally {
-        clearWatchdog()
-        if (abortRef.current === ctrl) abortRef.current = null
-        setIsStreaming(false)
-        setRoadmap((prev) => prev.map((p) => ({ ...p, active: false })))
-      }
+      )
     },
-    [armWatchdog, clearWatchdog, patchRun, pushStep]
+    [runStream, patchRun, pushStep]
   )
 
   // Manual stop button: abort the in-flight run and mark it cancelled.
